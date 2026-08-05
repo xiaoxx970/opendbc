@@ -196,7 +196,12 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         # Replace the deprecated openpilot starting state for MEB/MQB Evo. Latch the start request while releasing the hold
         # and keep a fixed launch acceleration until the car is moving fast enough for a safe handover to the PID.
-        starting_request = actuators.longControlState == LongCtrlState.pid and CS.esp_hold_confirmation
+        # the car can raise ESP_Haltebestaetigung while still rolling (seen at 1.25 km/h), which latched a
+        # pull away request mid deceleration and made the car grab the EPB while moving
+        starting_request = actuators.longControlState == LongCtrlState.pid and CS.esp_hold_confirmation and CS.out.standstill
+        # only let the hold confirmation gate full_stop once actually stopped, otherwise openpilot stops
+        # requesting deceleration while the wheels are still turning
+        esp_hold_stopped = CS.esp_hold_confirmation and CS.out.standstill
         if not long_active or CS.out.accFaulted or long_override or stopping or CS.out.vEgo > self.CCP.STARTING_VEGO:
           self.meb_starting = False
         elif starting_request:
@@ -225,7 +230,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                            self.long_jerk_control.get_jerk_down() if CC_IC.longComfortMode else self.CCP.JERK_LIMIT,
                                                            self.long_limit_control.get_upper_limit() if CC_IC.longComfortMode else 0.,
                                                            self.long_limit_control.get_lower_limit() if CC_IC.longComfortMode else 0.,
-                                                           accel, acc_control, acc_hold_type, stopping, starting, CS.esp_hold_confirmation,
+                                                           accel, acc_control, acc_hold_type, stopping, starting, esp_hold_stopped,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, long_override, CS.travel_assist_available))
 
       else:
