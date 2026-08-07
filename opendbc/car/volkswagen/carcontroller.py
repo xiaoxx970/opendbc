@@ -159,7 +159,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
           can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, lat_active, CS.klr_stock_values))
         self.klr_counter_last = CS.klr_stock_values["COUNTER"]
     else:
-      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
+      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT and self.frame % self.CCP.STEER_STEP == 0:
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
