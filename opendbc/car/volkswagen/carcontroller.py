@@ -89,6 +89,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
+      apply_torque = 0
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         # Logic to avoid HCA refused state:
         #   * steering power as counter and near zero before OP lane assist deactivation
@@ -136,7 +137,6 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         # MQB racks reset the uninterrupted steering timer after a single frame
         # of HCA disabled; this is done whenever output happens to be zero.
 
-        apply_torque = 0
         if CC.latActive:
           new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
           apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
