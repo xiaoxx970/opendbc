@@ -311,8 +311,9 @@ class CarState(CarStateBase, MadsCarState):
     ret.gasPressed   = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0 # detects accel pedal "a little bit" later than ["Motor_54"]["Accelerator_Pressure"]
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"]) # includes regen braking by user
 
-    # Status 4 is also used while Auto Hold closes the EPB. Keep braking while rolling so the EPB can finish without timing out.
-    ret.parkingBrake = (pt_cp.vl["ESC_50"]["EPB_Status"] == 1 or
+    # Disengage immediately for a driver close request, but keep braking during a system-initiated EPB close before standstill.
+    ret.parkingBrake = ((self.CP.flags & VolkswagenFlags.MQB_EVO and pt_cp.vl["Gateway_73"]["EPB_Schalterposition"] == 2) or
+                        pt_cp.vl["ESC_50"]["EPB_Status"] == 1 or
                         (pt_cp.vl["ESC_50"]["EPB_Status"] == 4 and ret.standstill))
     #ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4) # this signal is not working for newer models
 
