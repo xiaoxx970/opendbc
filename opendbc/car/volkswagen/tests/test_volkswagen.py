@@ -2,9 +2,10 @@ import random
 import re
 import unittest
 
-from opendbc.can import CANParser
+from opendbc.can import CANPacker, CANParser
 from opendbc.car import DT_CTRL, structs
 from opendbc.car.structs import CarParams
+from opendbc.car.volkswagen import mebcan
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
 from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
@@ -28,6 +29,11 @@ class TestVolkswagenDbc(unittest.TestCase):
       with self.subTest(dbc=dbc):
         signals = CANParser(dbc, [("ACC_19", 0)], 0).vl["ACC_19"]
         assert "ACC_Event_Wunschgeschw" in signals
+
+  def test_gen2_blinker_control_without_unknown_signal(self):
+    packer = CANPacker("vw_meb_2024_generated")
+    stock_values = {"EA_Blinken": 0, "EA_Texte": 3}
+    mebcan.create_blinker_control(packer, 0, stock_values, {"EA_Funktionsstatus": 0}, True, False, True)
 
 
 class TestVolkswagenHCAMitigation(unittest.TestCase):

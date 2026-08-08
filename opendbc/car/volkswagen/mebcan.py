@@ -55,7 +55,7 @@ def create_eps_update(packer, bus, eps_stock_values, ea_simulated_torque):
 
 
 def create_blinker_control(packer, bus, ea_hud_stock_values, ea_control_stock_values, left_blinker, right_blinker, hide_error):
-  values = {s: ea_hud_stock_values[s] for s in [
+  signal_names = [
     "EA_Texte",
     "ACF_Lampe_Hands_Off",
     "EA_Infotainment_Anf",
@@ -66,7 +66,8 @@ def create_blinker_control(packer, bus, ea_hud_stock_values, ea_control_stock_va
     "EA_Bremslichtblinken",
     "EA_Blinken",
     "EA_Unknown",
-  ]}
+  ]
+  values = {s: ea_hud_stock_values[s] for s in signal_names if s in ea_hud_stock_values}
 
   if ea_hud_stock_values["EA_Blinken"] == 0:
     values.update({
@@ -76,10 +77,9 @@ def create_blinker_control(packer, bus, ea_hud_stock_values, ea_control_stock_va
   # hide error when EA function is disabled by error state
   # this is relevant for radar disable (EA error probably because of missing ethernet communication from radar)
   if hide_error and ea_control_stock_values["EA_Funktionsstatus"] in (0, 1, 7, 8): # init, off, rev err, irrev error
-    values.update({
-      "EA_Texte": 0,
-      "EA_Unknown": 1, # in error state: 3
-    })
+    values["EA_Texte"] = 0
+    if "EA_Unknown" in ea_hud_stock_values:
+      values["EA_Unknown"] = 1 # in error state: 3
 
   return packer.make_can_msg("EA_02", bus, values)
 

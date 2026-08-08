@@ -114,6 +114,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         path: opendbc_repo
+    - run: uv pip install --python .venv/bin/python unittest-parallel
     - name: Cache test routes
       id: routes-cache
       uses: actions/cache@v4
