@@ -34,7 +34,7 @@ def addr_matches_masks(addr: int, masks: list[Mask]) -> bool:
     if (addr & m) == expected:
       return True
   return False
-  
+
 
 def chunks(l: list[T], n: int = 128) -> Iterator[list[T]]:
   for i in range(0, len(l), n):

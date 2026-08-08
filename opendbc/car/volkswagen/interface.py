@@ -1,7 +1,6 @@
 import time
 
-from opendbc.car import Bus, get_safety_config, structs, uds, DT_CTRL
-from opendbc.car.disable_ecu import disable_ecu
+from opendbc.car import Bus, get_safety_config, structs, uds
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.volkswagen.carcontroller import CarController
 from opendbc.car.volkswagen.carstate import CarState
@@ -38,7 +37,7 @@ class CarInterface(CarInterfaceBase):
         ret.networkLocation = NetworkLocation.gateway
       else:
         ret.networkLocation = NetworkLocation.fwdCamera
-        
+
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation
 
     elif ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
@@ -47,10 +46,10 @@ class CarInterface(CarInterfaceBase):
         safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
       elif ret.flags & VolkswagenFlags.MQB_EVO:
         safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMqbEvo)]
-        
+
       if ret.flags & (VolkswagenFlags.MEB_GEN2 | VolkswagenFlags.MQB_EVO_GEN2):
         safety_configs[0].safetyParam |= VolkswagenSafetyFlags.ALT_CRC_VARIANT_1.value
-      
+
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
       #ret.steerControlType = structs.CarParams.SteerControlType.angle
@@ -64,7 +63,7 @@ class CarInterface(CarInterfaceBase):
 
       if ret.networkLocation == NetworkLocation.gateway:
         ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
-        
+
       if ret.flags & VolkswagenFlags.MQB_EVO and 0x30B in fingerprint[0]:  # Kombi_01
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
 
@@ -102,39 +101,6 @@ class CarInterface(CarInterfaceBase):
       ret.enableBsm = 0x30F in fingerprint[0]  # SWA_01
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation, revised J533 harness
-
-    elif ret.flags & VolkswagenFlags.MEB:
-      # Set global MEB parameters
-      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
-      if ret.flags & VolkswagenFlags.MEB_GEN2:
-        safety_configs[0].safetyParam |= VolkswagenSafetyFlags.MEB_ALT_CRC.value
-
-      ret.transmissionType = TransmissionType.direct
-      ret.steerControlType = structs.CarParams.SteerControlType.curvature
-      ret.steerAtStandstill = True
-
-      ret.lateralTuning.init('pid')
-      ret.lateralTuning.pid.kpBP = [10., 40.]
-      ret.lateralTuning.pid.kpV = [0., 1.45]
-      ret.lateralTuning.pid.kiBP = [10., 40.]
-      ret.lateralTuning.pid.kiV = [0., 0.12]
-      ret.lateralTuning.pid.kf = 1.
-
-      if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, QFK_01
-        ret.networkLocation = NetworkLocation.gateway
-      else:
-        ret.networkLocation = NetworkLocation.fwdCamera
-        ret.radarUnavailable = True
-
-      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
-
-      if 0x25D in fingerprint[0]:  # KLR_01
-        ret.flags |= VolkswagenFlags.STOCK_KLR_PRESENT.value
-      if 0x3DC in fingerprint[0]:  # Gateway_73
-        ret.flags |= VolkswagenFlags.ALT_GEAR.value
-
-      # only allow gateway harness to escalate Emergency Assist
-      ret.dashcamOnly = ret.networkLocation == NetworkLocation.fwdCamera
 
     else:
       # Set global MQB parameters
@@ -186,15 +152,14 @@ class CarInterface(CarInterfaceBase):
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
     if ret.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
-      ret.longitudinalActuatorDelay = 0.2
+      ret.longitudinalActuatorDelay = 0.3 if ret.flags & VolkswagenFlags.MEB else 0.2
       ret.radarDelay = 0.15
-      #ret.longitudinalTuning.kpBP = [0., 5.]
-      #ret.longitudinalTuning.kiBP = [0., 30.]
-      #ret.longitudinalTuning.kpV = [0.2, 0.] # (with usage of starting state otherwise starting jerk)
-      #ret.longitudinalTuning.kiV = [0.4, 0.]
+      if ret.flags & VolkswagenFlags.MEB:
+        ret.longitudinalTuning.kiBP = [0., 30.]
+        ret.longitudinalTuning.kiV = [0.4, 0.]
 
     ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs or bool(ret.flags & VolkswagenFlags.DISABLE_RADAR)
-    if alpha_long and ret.alphaLongitudinalAvailable:
+    if ret.flags & VolkswagenFlags.MEB or (alpha_long and ret.alphaLongitudinalAvailable):
       # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
       ret.openpilotLongitudinalControl = True
       safety_configs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
@@ -234,7 +199,7 @@ class CarInterface(CarInterfaceBase):
   def pre_init(CP, CP_SP, CP_IC, can_recv, can_send):
     # fork custom method in CarD called at a point, where car params can still be changed
     # check pre conditions for successful radar disable
-    # put the device into dashcam mode if neccessary: no relay switching, no bus blocking with relay malfunction
+    # put the device into dashcam mode if necessary: no relay switching, no bus blocking with relay malfunction
     if CP.openpilotLongitudinalControl and (CP.flags & VolkswagenFlags.DISABLE_RADAR):
       if CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         if not CarInterface._is_engine_state_allowed_meb(can_recv):
@@ -282,16 +247,16 @@ class CarInterface(CarInterfaceBase):
     empty_resp = b''
 
     txt = "disable" if disable else "enable"
-	  
+
     for i in range(retry):
       try:
-		# Tester Present
+        # Tester Present
         if disable:
           query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [tp_req], [tp_resp], volkswagen_rx_offset, functional_addrs=[addr_diag])
           if not query.get_data(timeout):
             carlog.warning(f"Tester Present returned no data on attempt {i+1}")
             continue
-		  
+
           # Extended Diagnostic Session
           query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [ext_diag_req], [ext_diag_resp], volkswagen_rx_offset)
           if not query.get_data(timeout):
@@ -304,7 +269,7 @@ class CarInterface(CarInterfaceBase):
           carlog.warning(f"Radar {txt} by programming session sent on attempt {i+1}")
 
         return True
-            
+
       except Exception as e:
         carlog.error(f"Radar {txt} exception on attempt {i+1}: {repr(e)}")
         continue
@@ -318,15 +283,14 @@ class CarInterface(CarInterfaceBase):
     # detect if the radar can be disabled by engine state
     # [Motor_54][Engine_On]
     end_time = time.monotonic() + timeout
-  
+
     while time.monotonic() < end_time:
       packets = can_recv(wait_for_one=True) or []
       for packet in packets:
         for msg in packet:
           if msg.address != 0x14C:
             continue
-  
-          dat = msg.dat
+
           engine_on = bool((msg.dat[9] >> 5) & 0x01)
 
           if engine_on:
@@ -335,6 +299,6 @@ class CarInterface(CarInterfaceBase):
           else:
             carlog.warning(f"Engine state is allowed: Engine_On={engine_on}")
             return True
-  
+
     carlog.warning("Engine state state unknown")
     return True

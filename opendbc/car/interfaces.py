@@ -217,7 +217,7 @@ class CarInterfaceBase(ABC, CarInterfaceBaseSP):
   @staticmethod
   def pre_init(CP: structs.CarParams, CP_SP: structs.CarParamsSP, CP_IC: structs.CarParamsIC, can_recv: CanRecvCallable, can_send: CanSendCallable):
     """Used to check conditions to disable longitudinal ECUs as needed and set/change car params"""
-  
+
   @staticmethod
   def init(CP: structs.CarParams, CP_SP: structs.CarParamsSP, CP_IC: structs.CarParamsIC, can_recv: CanRecvCallable, can_send: CanSendCallable):
     """Used to disable longitudinal ECUs as needed"""
@@ -431,7 +431,8 @@ class CarControllerBase(ABC):
     self.secoc_key: bytes = b"00" * 16
 
   @abstractmethod
-  def update(self, CC: structs.CarControl, CC_SP: structs.CarControlSP, CC_IC: structs.CarControlIC, CS: CarStateBase, now_nanos: int) -> tuple[structs.CarControl.Actuators, list[CanData]]:
+  def update(self, CC: structs.CarControl, CC_SP: structs.CarControlSP, CC_IC: structs.CarControlIC, CS: CarStateBase,
+             now_nanos: int) -> tuple[structs.CarControl.Actuators, list[CanData]]:
     pass
 
 

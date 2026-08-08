@@ -34,5 +34,5 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
         can_sends.append(self.CCS.create_acc_buttons_control(packer, CAN, CS.gra_stock_values, up=up, down=down))
         self.last_button_frame = self.frame
-    
+
     return can_sends

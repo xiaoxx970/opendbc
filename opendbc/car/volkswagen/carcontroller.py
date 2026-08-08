@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 
 from opendbc.can import CANPacker
@@ -45,6 +47,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.CAN = CanBus(CP)
     self.packer_pt = CANPacker(dbc_names[Bus.pt])
     self.aeb_available = not CP.flags & VolkswagenFlags.PQ
+    self.CCS: Any
 
     if CP.flags & VolkswagenFlags.PQ:
       self.CCS = pqcan
@@ -65,6 +68,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.long_override_counter = 0
     self.long_disabled_counter = 0
     self.meb_starting = False
+    self.acc_hold_type_last = mebcan.ACC_HMS_NO_REQUEST
+    self.long_active_last = False
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
@@ -93,7 +98,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         # Logic to avoid HCA refused state:
         #   * steering power as counter and near zero before OP lane assist deactivation
-        # MEB rack can be used continously without time limits
+        # MEB rack can be used continuously without time limits
         # maximum real steering angle change ~ 120-130 deg/s
 
         if CC.latActive:
@@ -197,7 +202,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         #   * (1 frame of HMS RAMP RELEASE is enough, but lower the possibility of panda safety blocking it)
 
         # AEB fallback: when stock AEB is active, always send inactive accel to allow stock system takeover
-        long_active = CC.enabled and not CS.out.stockAeb
+        long_active = CC.enabled and not CS.out.accFaulted and not CS.out.stockAeb
         long_override = CC.cruiseControl.override or CS.out.gasPressed
 
         # Replace the deprecated openpilot starting state for MEB/MQB Evo. Latch the start request while releasing the hold
@@ -230,7 +235,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         acc_control = self.CCS.get_acc_control(CS.out.cruiseState.available, CS.out.accFaulted, long_active, long_override)
         acc_hold_type = self.CCS.get_acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, long_active, starting, stopping,
-                                                   CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling)
+                                                   CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling,
+                                                   self.acc_hold_type_last, long_active and not self.long_active_last, CS.out.vEgo)
+        self.acc_hold_type_last = acc_hold_type
+        self.long_active_last = long_active
         can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CP, self.CCP, CS.acc_type, long_active,
                                                            self.long_jerk_control.get_jerk_up() if CC_IC.longComfortMode else self.CCP.JERK_LIMIT,
                                                            self.long_jerk_control.get_jerk_down() if CC_IC.longComfortMode else self.CCP.JERK_LIMIT,
@@ -320,7 +328,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active)
 
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
-                                                         hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
+                                                         hud_control.leadVisible, hud_control.leadDistanceBars, show_distance_bars,
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit))
 
       else:

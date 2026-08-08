@@ -521,27 +521,13 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "Seat Leon 2020-25": {
-    "platform": "SEAT_LEON_MK4",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "Leon IV",
-    "year": [
-      "2020",
-      "2021",
-      "2022",
-      "2023",
-      "2024",
-      "2025"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
-  "CUPRA Born 2022-23": {
+  "CUPRA Born 2021-23": {
     "platform": "CUPRA_BORN_MK1",
     "make": "CUPRA",
     "brand": "volkswagen",
     "model": "Born",
     "year": [
+      "2021",
       "2022",
       "2023"
     ],
@@ -666,11 +652,11 @@
     ],
     "package": "Co-Pilot360 Assist+"
   },
-  "Ford Explorer EV 2024-25": {
+  "Ford Explorer EV Limited 2024-25": {
     "platform": "FORD_EXPLORER_EV_MK1",
     "make": "Ford",
     "brand": "volkswagen",
-    "model": "Explorer EV",
+    "model": "Explorer EV Limited",
     "year": [
       "2024",
       "2025"
@@ -1138,7 +1124,7 @@
     ],
     "package": "All"
   },
-  "Honda Civic 2022-24": {
+  "Honda Civic 2022-26": {
     "platform": "HONDA_CIVIC_2022",
     "make": "Honda",
     "brand": "honda",
@@ -1146,7 +1132,9 @@
     "year": [
       "2022",
       "2023",
-      "2024"
+      "2024",
+      "2025",
+      "2026"
     ],
     "package": "All"
   },
@@ -3078,7 +3066,7 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "SEAT Leon 2014-20": {
+  "SEAT Leon 2014-19": {
     "platform": "SEAT_ATECA_MK1",
     "make": "SEAT",
     "brand": "volkswagen",
@@ -3089,8 +3077,22 @@
       "2016",
       "2017",
       "2018",
-      "2019",
-      "2020"
+      "2019"
+    ],
+    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
+  },
+  "SEAT Leon 2020-25": {
+    "platform": "SEAT_LEON_MK4",
+    "make": "SEAT",
+    "brand": "volkswagen",
+    "model": "Leon",
+    "year": [
+      "2020",
+      "2021",
+      "2022",
+      "2023",
+      "2024",
+      "2025"
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
@@ -4201,7 +4203,7 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "Volkswagen Golf 2015-20": {
+  "Volkswagen Golf 2015-19": {
     "platform": "VOLKSWAGEN_GOLF_MK7",
     "make": "Volkswagen",
     "brand": "volkswagen",
@@ -4211,8 +4213,22 @@
       "2016",
       "2017",
       "2018",
-      "2019",
-      "2020"
+      "2019"
+    ],
+    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
+  },
+  "Volkswagen Golf 2020-25": {
+    "platform": "VOLKSWAGEN_GOLF_MK8",
+    "make": "Volkswagen",
+    "brand": "volkswagen",
+    "model": "Golf",
+    "year": [
+      "2020",
+      "2021",
+      "2022",
+      "2023",
+      "2024",
+      "2025"
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
@@ -4290,46 +4306,6 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "Volkswagen Golf 2020-25": {
-    "platform": "VOLKSWAGEN_GOLF_MK8",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "Golf 8",
-    "year": [
-      "2020",
-      "2021",
-      "2022",
-      "2023",
-      "2024",
-      "2025"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
-  "Volkswagen MQBevo Gen 1 2020-25": {
-    "platform": "VOLKSWAGEN_GOLF_MK8",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "MQBevo",
-    "year": [
-      "2020",
-      "2021",
-      "2022",
-      "2023",
-      "2024",
-      "2025"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
-  "Volkswagen MQBevo Gen 2 2026": {
-    "platform": "AUDI_A3_MK4",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "MQBevo Gen 2",
-    "year": [
-      "2026"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
   "Volkswagen Golf SportsVan 2015-20": {
     "platform": "VOLKSWAGEN_GOLF_MK7",
     "make": "Volkswagen",
@@ -4384,11 +4360,11 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "Volkswagen ID.4/5 2021-23": {
+  "Volkswagen ID.4 2021-23": {
     "platform": "VOLKSWAGEN_ID4_MK1",
     "make": "Volkswagen",
     "brand": "volkswagen",
-    "model": "ID.4/5",
+    "model": "ID.4",
     "year": [
       "2021",
       "2022",
@@ -4407,27 +4383,14 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
-  "Volkswagen MEB Gen 1 2020-23": {
-    "platform": "VOLKSWAGEN_ID3_MK1",
+  "Volkswagen ID.5 2022-23": {
+    "platform": "VOLKSWAGEN_ID4_MK1",
     "make": "Volkswagen",
     "brand": "volkswagen",
-    "model": "MEB Gen 1",
+    "model": "ID.5",
     "year": [
-      "2020",
-      "2021",
       "2022",
       "2023"
-    ],
-    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
-  },
-  "Volkswagen MEB Gen 2 2024-25": {
-    "platform": "VOLKSWAGEN_ID3_MK2",
-    "make": "Volkswagen",
-    "brand": "volkswagen",
-    "model": "MEB Gen 2",
-    "year": [
-      "2024",
-      "2025"
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },

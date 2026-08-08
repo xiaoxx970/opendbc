@@ -170,6 +170,21 @@ BO_ 219 AWV_03: 48 XXX
  SG_ Timer_3_SET_ME_126 : 93|7@1+ (1,0) [0|127] "" XXX
  SG_ SET_ME_15 : 100|4@1+ (1,0) [0|15] "" XXX
  SG_ SET_ME_2 : 128|4@1+ (1,0) [0|15] "" XXX
+ SG_ AEB_Object_Status : 12|3@1+ (1,0) [0|7] "" XXX
+ SG_ VRU_Detected : 15|1@1+ (1,0) [0|1] "" XXX
+ SG_ AWV_Unavailable : 17|1@1+ (1,0) [0|1] "" XXX
+ SG_ Unknown_18 : 18|6@1+ (1,0) [0|63] "" XXX
+ SG_ AEB_Object_Status_B : 24|3@1+ (1,0) [0|7] "" XXX
+ SG_ Unknown_27 : 27|5@1+ (1,0) [0|31] "" XXX
+ SG_ SET_ME_254 : 32|8@1+ (1,0) [0|255] "" XXX
+ SG_ AEB_TTC_Countdown : 40|8@1+ (1,0) [0|255] "" XXX
+ SG_ AEB_Target_Decel : 66|10@1+ (0.01,-10.23) [-10.23|0] "Unit_MeterPerSeconSquar" XXX
+ SG_ Unknown_80 : 80|8@1+ (1,0) [0|255] "" XXX
+ SG_ AEB_Active_2 : 91|1@1+ (1,0) [0|1] "" XXX
+ SG_ Unknown_93 : 93|7@1+ (1,0) [0|127] "" XXX
+ SG_ Unknown_100 : 100|4@1+ (1,0) [0|15] "" XXX
+ SG_ AWV_Init_Status : 128|2@1+ (1,0) [0|3] "" XXX
+ SG_ Unknown_192 : 192|1@1+ (1,0) [0|1] "" XXX
 
 BO_ 253 ESP_21: 8 Gateway_MQB
  SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] "" Airbag_MQB,Getriebe_DQ_Hybrid_MQB,Getriebe_DQ_MQB,LEH_MQB,Motor_Diesel_MQB,Motor_Hybrid_MQB,Motor_Otto_MQB
@@ -469,6 +484,7 @@ BO_ 313 VMM_02: 32 XXX
  SG_ AEB_Active : 31|1@0+ (1,0) [0|1] "" XXX
  SG_ ESP_Hold : 35|1@0+ (1,0) [0|1] "" XXX
  SG_ Brake_Pressed_3 : 48|1@0+ (1,0) [0|1] "" XXX
+ SG_ Long_Control_Inhibit : 52|2@1+ (1,0) [0|3] "" XXX
  SG_ FCW_Reaction_2 : 56|1@1+ (1,0) [0|1] "" XXX
  SG_ Brake_Pressure : 76|11@1+ (1,0) [0|100] "" XXX
  SG_ FCW_Reaction_3 : 88|5@1+ (1,0) [0|31] "" XXX

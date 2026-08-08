@@ -22,14 +22,23 @@
 #define MSG_MEB_AWV_01       0x16A954ADU   // TX, radar AEB HUD message replacement
 #define MSG_Strukturen_01    0x24FU   // TX, radar objects message replacement
 
+// ACC_18.ACC_Anforderung_HMS, the states openpilot is allowed to request
+#define VOLKSWAGEN_MEB_HMS_KEINE_ANFORDERUNG   0U
+#define VOLKSWAGEN_MEB_HMS_HALTEN              1U
+#define VOLKSWAGEN_MEB_HMS_ANFAHREN            4U
+#define VOLKSWAGEN_MEB_HMS_LOESEN_UEBER_RAMPE  5U
 
-#define VW_MEB_COMMON_RX_CHECKS                                                                     \
-  {.msg = {{MSG_LH_EPS_03, 0, 8, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
+// ACC_18.ACC_Status_ACC, the states that tell the drivetrain ACC is regulating
+#define VOLKSWAGEN_MEB_ACC_AKTIV_REGELT        3U
+#define VOLKSWAGEN_MEB_ACC_OVERRIDE            4U
+
+#define VW_MEB_COMMON_RX_CHECKS                                                                        \
+  {.msg = {{MSG_LH_EPS_03, 0, 8, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
   {.msg = {{MSG_MOTOR_14, 0, 8, 10U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},   \
   {.msg = {{MSG_GRA_ACC_01, 0, 8, 33U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
   {.msg = {{MSG_QFK_01, 0, 32, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},    \
   {.msg = {{MSG_ESP_21, 0, 8, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},    \
-  
+
 #define VW_MEB_RX_CHECKS                                                                            \
   {.msg = {{MSG_Motor_51, 0, 32, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
   {.msg = {{MSG_ESC_51, 0, 48, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},    \
@@ -67,25 +76,25 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   
   uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
   if (msg->addr == MSG_LH_EPS_03) {
-    crc ^= (uint8_t[]){0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5,0xF5}[counter];
-  } else if (msg->addr == MSG_GRA_ACC_01) {
-    crc ^= (uint8_t[]){0x6A,0x38,0xB4,0x27,0x22,0xEF,0xE1,0xBB,0xF8,0x80,0x84,0x49,0xC7,0x9E,0x1E,0x2B}[counter];
-  } else if (msg->addr == MSG_QFK_01) {
-    crc ^= (uint8_t[]){0x20,0xCA,0x68,0xD5,0x1B,0x31,0xE2,0xDA,0x08,0x0A,0xD4,0xDE,0x9C,0xE4,0x35,0x5B}[counter];
-  } else if (msg->addr == MSG_ESC_51) {
-    crc ^= (uint8_t[]){0x77,0x5C,0xA0,0x89,0x4B,0x7C,0xBB,0xD6,0x1F,0x6C,0x4F,0xF6,0x20,0x2B,0x43,0xDD}[counter];
-  } else if (msg->addr == MSG_ESP_21) {
-    crc ^= (uint8_t[]){0xB4,0xEF,0xF8,0x49,0x1E,0xE5,0xC2,0xC0,0x97,0x19,0x3C,0xC9,0xF1,0x98,0xD6,0x61}[counter];
-  } else if (msg->addr == MSG_Motor_51) {
-    crc ^= (uint8_t[]){0x77,0x5C,0xA0,0x89,0x4B,0x7C,0xBB,0xD6,0x1F,0x6C,0x4F,0xF6,0x20,0x2B,0x43,0xDD}[counter];
+    crc ^= (uint8_t[]){0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5}[counter];
   } else if (msg->addr == MSG_MOTOR_14) {
-    crc ^= (uint8_t[]){0x1F,0x28,0xC6,0x85,0xE6,0xF8,0xB0,0x19,0x5B,0x64,0x35,0x21,0xE4,0xF7,0x9C,0x24}[counter];
+    crc ^= (uint8_t[]){0x1F, 0x28, 0xC6, 0x85, 0xE6, 0xF8, 0xB0, 0x19, 0x5B, 0x64, 0x35, 0x21, 0xE4, 0xF7, 0x9C, 0x24}[counter];
+  } else if (msg->addr == MSG_GRA_ACC_01) {
+    crc ^= (uint8_t[]){0x6A, 0x38, 0xB4, 0x27, 0x22, 0xEF, 0xE1, 0xBB, 0xF8, 0x80, 0x84, 0x49, 0xC7, 0x9E, 0x1E, 0x2B}[counter];
+  } else if (msg->addr == MSG_QFK_01) {
+    crc ^= (uint8_t[]){0x20, 0xCA, 0x68, 0xD5, 0x1B, 0x31, 0xE2, 0xDA, 0x08, 0x0A, 0xD4, 0xDE, 0x9C, 0xE4, 0x35, 0x5B}[counter];
+  } else if (msg->addr == MSG_ESC_51) {
+    crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
+  } else if (msg->addr == MSG_ESP_21) {
+    crc ^= (uint8_t[]){0xB4, 0xEF, 0xF8, 0x49, 0x1E, 0xE5, 0xC2, 0xC0, 0x97, 0x19, 0x3C, 0xC9, 0xF1, 0x98, 0xD6, 0x61}[counter];
+  } else if (msg->addr == MSG_Motor_51) {
+    crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
   } else if (msg->addr == MSG_KLR_01) {
-    crc ^= (uint8_t[]){0xDA,0x6B,0x0E,0xB2,0x78,0xBD,0x5A,0x81,0x7B,0xD6,0x41,0x39,0x76,0xB6,0xD7,0x35}[counter];
+    crc ^= (uint8_t[]){0xDA, 0x6B, 0x0E, 0xB2, 0x78, 0xBD, 0x5A, 0x81, 0x7B, 0xD6, 0x41, 0x39, 0x76, 0xB6, 0xD7, 0x35}[counter];
   } else if (msg->addr == MSG_EA_02) {
-    crc ^= (uint8_t[]){0x2F,0x3C,0x22,0x60,0x18,0xEB,0x63,0x76,0xC5,0x91,0x0F,0x27,0x34,0x04,0x7F,0x02}[counter];
+    crc ^= (uint8_t[]){0x2F, 0x3C, 0x22, 0x60, 0x18, 0xEB, 0x63, 0x76, 0xC5, 0x91, 0x0F, 0x27, 0x34, 0x04, 0x7F, 0x02}[counter];
   } else if (msg->addr == MSG_AWV_03) {
-    crc ^= (uint8_t[]){0x09,0xFA,0xCA,0x8E,0x62,0xD5,0xD1,0xF0,0x31,0xA0,0xAF,0xDA,0x4D,0x1A,0x0A,0x97}[counter];
+    crc ^= (uint8_t[]){0x09, 0xFA, 0xCA, 0x8E, 0x62, 0xD5, 0xD1, 0xF0, 0x31, 0xA0, 0xAF, 0xDA, 0x4D, 0x1A, 0x0A, 0x97}[counter];
   } else {
     // Undefined CAN message, CRC check expected to fail
   }
@@ -96,50 +105,49 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
 
 static uint32_t volkswagen_meb_gen2_compute_crc(const CANPacket_t *msg) {
   // For newer variants the checksum is calculated over a specific signal length.
-  if (!volkswagen_alt_crc_variant_1) {
-	return volkswagen_meb_compute_crc(msg); // fallback
-  }
-  
-  int len = GET_LEN(msg);
-  
-  if (msg->addr == MSG_QFK_01) {
-    len = 28;
-  } else if (msg->addr == MSG_ESC_51) {
-    len = 60;
-  } else if (msg->addr == MSG_Motor_51) {
-    len = 44;
-  } else if (msg->addr == MSG_AWV_03) {
-    len = 42;
-  } else {
-	return volkswagen_meb_compute_crc(msg); // fallback
-  }
-  
-  uint8_t crc = 0xFFU;
-  for (int i = 1; i < len; i++) {
-    crc ^= (uint8_t)msg->data[i];
-    crc = volkswagen_crc8_lut_8h2f[crc];
-  }
-  
-  uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
-  if (msg->addr == MSG_QFK_01) {
-	crc ^= (uint8_t[]){0x18,0x71,0x10,0x8D,0xD7,0xAA,0xB0,0x78,0xAC,0x12,0xAE,0x0C,0xDD,0xF1,0x85,0x68}[counter];
-  } else if (msg->addr == MSG_ESC_51) {
-	crc ^= (uint8_t[]){0x69,0xDC,0xF9,0x64,0x6A,0xCE,0x55,0x2C,0xC4,0x38,0x8F,0xD1,0xC6,0x43,0xB4,0xB1}[counter];
-  } else if (msg->addr == MSG_Motor_51) {
-	crc ^= (uint8_t[]){0x2C,0xB1,0x1A,0x75,0xBB,0x65,0x79,0x47,0x81,0x2B,0xCC,0x96,0x17,0xDB,0xC0,0x94}[counter];
-  } else if (msg->addr == MSG_AWV_03) {
-	crc ^= (uint8_t[]){0x09,0xFA,0xCA,0x8E,0x62,0xD5,0xD1,0xF0,0x31,0xA0,0xAF,0xDA,0x4D,0x1A,0x0A,0x97}[counter];
-  } else {
-	return volkswagen_meb_compute_crc(msg); // fallback
+  uint32_t ret = volkswagen_meb_compute_crc(msg);
+  int len = 0;
+  if (volkswagen_alt_crc_variant_1) {
+    if (msg->addr == MSG_QFK_01) {
+      len = 28;
+    } else if (msg->addr == MSG_ESC_51) {
+      len = 60;
+    } else if (msg->addr == MSG_Motor_51) {
+      len = 44;
+    } else if (msg->addr == MSG_AWV_03) {
+      len = 42;
+    } else {
+      len = 0;
+    }
   }
 
-  crc = (uint8_t)(volkswagen_crc8_lut_8h2f[crc] ^ 0xFFU);
-  
-  if (crc != msg->data[0]) {
-	return volkswagen_meb_compute_crc(msg); // fallback
+  if (len > 0) {
+    uint8_t crc = 0xFFU;
+    for (int i = 1; i < len; i++) {
+      crc ^= (uint8_t)msg->data[i];
+      crc = volkswagen_crc8_lut_8h2f[crc];
+    }
+
+    uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
+    if (msg->addr == MSG_QFK_01) {
+      crc ^= (uint8_t[]){0x18, 0x71, 0x10, 0x8D, 0xD7, 0xAA, 0xB0, 0x78, 0xAC, 0x12, 0xAE, 0x0C, 0xDD, 0xF1, 0x85, 0x68}[counter];
+    } else if (msg->addr == MSG_ESC_51) {
+      crc ^= (uint8_t[]){0x69, 0xDC, 0xF9, 0x64, 0x6A, 0xCE, 0x55, 0x2C, 0xC4, 0x38, 0x8F, 0xD1, 0xC6, 0x43, 0xB4, 0xB1}[counter];
+    } else if (msg->addr == MSG_Motor_51) {
+      crc ^= (uint8_t[]){0x2C, 0xB1, 0x1A, 0x75, 0xBB, 0x65, 0x79, 0x47, 0x81, 0x2B, 0xCC, 0x96, 0x17, 0xDB, 0xC0, 0x94}[counter];
+    } else if (msg->addr == MSG_AWV_03) {
+      crc ^= (uint8_t[]){0x09, 0xFA, 0xCA, 0x8E, 0x62, 0xD5, 0xD1, 0xF0, 0x31, 0xA0, 0xAF, 0xDA, 0x4D, 0x1A, 0x0A, 0x97}[counter];
+    } else {
+      // Undefined CAN message, CRC check expected to fail
+    }
+
+    crc = (uint8_t)(volkswagen_crc8_lut_8h2f[crc] ^ 0xFFU);
+    if (crc == msg->data[0]) {
+      ret = crc;
+    }
   }
-  
-  return (uint8_t)(crc);
+
+  return ret;
 }
 
 static safety_config volkswagen_meb_init(uint16_t param) {
@@ -150,86 +158,74 @@ static safety_config volkswagen_meb_init(uint16_t param) {
                                                         {MSG_GRA_ACC_01, 2, 8, .check_relay = false}, {MSG_LDW_02, 0, 8, .check_relay = true}};
   
   static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {
-	VW_MEB_LONG_TX_MSGS
+    VW_MEB_LONG_TX_MSGS
   };
 
   static const CanMsg VOLKSWAGEN_MEB_LONG_NO_RADAR_TX_MSGS[] = {
-	VW_MEB_LONG_TX_MSGS
-	VW_MEB_RADAR_TX_MSGS
-	{MSG_DIAGNOSTIC, 0, 8, .check_relay = false},
+    VW_MEB_LONG_TX_MSGS
+    VW_MEB_RADAR_TX_MSGS
+    {MSG_DIAGNOSTIC, 0, 8, .check_relay = false},
   };
 
   static RxCheck volkswagen_meb_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
-	VW_MEB_RX_CHECKS
-	VW_MEB_RADAR_RX_CHECKS
+    VW_MEB_RX_CHECKS
+    VW_MEB_RADAR_RX_CHECKS
   };
   
   static RxCheck volkswagen_meb_no_radar_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
-	VW_MEB_RX_CHECKS
+    VW_MEB_RX_CHECKS
   };
 
   static RxCheck volkswagen_meb_gen2_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
-	VW_MEB_GEN2_RX_CHECKS
-	VW_MEB_RADAR_RX_CHECKS
+    VW_MEB_GEN2_RX_CHECKS
+    VW_MEB_RADAR_RX_CHECKS
   };
   
   static RxCheck volkswagen_meb_gen2_no_radar_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
-	VW_MEB_GEN2_RX_CHECKS
+    VW_MEB_GEN2_RX_CHECKS
   };
 
   volkswagen_common_init();
   volkswagen_stock_aeb = false;
 
   volkswagen_alt_crc_variant_1 = GET_FLAG(param, FLAG_VOLKSWAGEN_ALT_CRC_VARIANT_1);
-
-#ifdef ALLOW_DEBUG
   volkswagen_longitudinal = GET_FLAG(param, FLAG_VOLKSWAGEN_LONG_CONTROL);
+#ifdef ALLOW_DEBUG
   volkswagen_disable_radar = GET_FLAG(param, FLAG_VOLKSWAGEN_DISABLE_RADAR);
 #endif
 
   safety_config ret;
   
   if (volkswagen_longitudinal) {
-	if (volkswagen_disable_radar) {
-	  SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_NO_RADAR_TX_MSGS, ret);
-	} else {
+    if (volkswagen_disable_radar) {
+      SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_NO_RADAR_TX_MSGS, ret);
+    } else {
       SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_TX_MSGS, ret);
-	}
+    }
   } else {
-	SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
+    SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
   }
   
   if (volkswagen_alt_crc_variant_1) {
-	if (volkswagen_disable_radar || !volkswagen_longitudinal) {
-	  SET_RX_CHECKS(volkswagen_meb_gen2_no_radar_rx_checks, ret);
-	} else {
-	  SET_RX_CHECKS(volkswagen_meb_gen2_rx_checks, ret);
-	}
+    if (volkswagen_disable_radar || !volkswagen_longitudinal) {
+      SET_RX_CHECKS(volkswagen_meb_gen2_no_radar_rx_checks, ret);
+    } else {
+      SET_RX_CHECKS(volkswagen_meb_gen2_rx_checks, ret);
+    }
   } else {
-	if (volkswagen_disable_radar || !volkswagen_longitudinal) {
-	  SET_RX_CHECKS(volkswagen_meb_no_radar_rx_checks, ret);
-	} else {
-	  SET_RX_CHECKS(volkswagen_meb_rx_checks, ret);
-	}
+    if (volkswagen_disable_radar || !volkswagen_longitudinal) {
+      SET_RX_CHECKS(volkswagen_meb_no_radar_rx_checks, ret);
+    } else {
+      SET_RX_CHECKS(volkswagen_meb_rx_checks, ret);
+    }
   }
   
   return ret;
 }
-
-// lateral limits for curvature
-static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105,
-  .curvature_to_can = 149253.7313f,
-  .frequency = 50,                   // Hz
-  .max_curvature_error = 0,          // disabled, MEB doesn't track rack
-  .curvature_error_min_speed = 0.0,  // disabled
-  .max_steer_power = 125,
-  .inactive_curvature_is_zero = false, // MEB winds down with measured curvature
-};
 
 static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == 0U) {
@@ -296,6 +292,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
         volkswagen_set_button_prev = set_button;
         volkswagen_resume_button_prev = resume_button;
       }
+
       // Always exit controls on rising edge of Cancel
       // Signal: GRA_ACC_01.GRA_Abbrechen
       if (GET_BIT(msg, 13U)) {
@@ -316,25 +313,34 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   }
 
   if (msg->bus == 2U) {
-	// update AEB
+    // update AEB
     if (msg->addr == MSG_AWV_03) {
       if (volkswagen_longitudinal) {
         volkswagen_stock_aeb = GET_BIT(msg, 65U);
-	  }
+      }
     }
-	
+
   }
 }
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
+  const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+    .max_curvature = 29105,
+    .curvature_to_can = 149253.7313f,
+    .frequency = 50,                   // Hz
+    .max_curvature_error = 0,          // disabled, MEB doesn't track rack
+    .curvature_error_min_speed = 0.0,  // disabled
+    .max_steer_power = 125,
+  };
+
   // longitudinal limits
   // acceleration in m/s2 * 1000 to avoid floating point math
   const LongitudinalLimits VOLKSWAGEN_MEB_LONG_LIMITS = {
     .max_accel = 2000,
     .min_accel = -3500,
     .inactive_accel = 3010,  // VW sends one increment above the max range when inactive
-	.override_accel = 0,
-	.allow_override = true,
+    .override_accel = 0,
+    .allow_override = true,
   };
   
   bool tx = true;
@@ -362,6 +368,25 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     // WARNING: IF WE TAKE THE SIGNAL FROM THE CAR WHILE ACC ACTIVE AND BELOW ABOUT 3km/h, THE CAR ERRORS AND PUTS ITSELF IN PARKING MODE WITH EPB!
     int desired_accel = ((((msg->data[4] & 0x7U) << 8) | msg->data[3]) * 5U) - 7220U;
     if (longitudinal_accel_checks(desired_accel, VOLKSWAGEN_MEB_LONG_LIMITS)) {
+      tx = false;
+    }
+
+    // The drivetrain acts on PARKEN and HALTEN even with ACC disengaged. Only release states are
+    // unconditional, since the disengage ramp sends LOESEN_UEBER_RAMPE after controls are disallowed.
+    uint8_t hold_type = (msg->data[9] >> 5) & 0x07U;
+    bool hold_type_allowed = (hold_type == VOLKSWAGEN_MEB_HMS_KEINE_ANFORDERUNG) ||
+                             (hold_type == VOLKSWAGEN_MEB_HMS_LOESEN_UEBER_RAMPE) ||
+                             (controls_allowed && ((hold_type == VOLKSWAGEN_MEB_HMS_HALTEN) ||
+                                                   (hold_type == VOLKSWAGEN_MEB_HMS_ANFAHREN)));
+    if (!hold_type_allowed) {
+      tx = false;
+    }
+
+    // Active and override status make the drivetrain act on requests and require an active engagement.
+    uint8_t acc_status = (msg->data[7] >> 4) & 0x07U;
+    bool acc_status_active = (acc_status == VOLKSWAGEN_MEB_ACC_AKTIV_REGELT) ||
+                             (acc_status == VOLKSWAGEN_MEB_ACC_OVERRIDE);
+    if (acc_status_active && !controls_allowed) {
       tx = false;
     }
 

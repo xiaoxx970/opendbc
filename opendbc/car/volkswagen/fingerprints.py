@@ -15,15 +15,9 @@ FW_VERSIONS = {
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906013F \xf1\x894095',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980654M \xf1\x895556',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907567B \xf1\x890232',
     ],
@@ -390,10 +384,6 @@ FW_VERSIONS = {
     ],
   },
   CAR.VOLKSWAGEN_GOLF_MK8: {
-    (Ecu.engine, 0x7e0, None): [],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.cornerRadar, 0x74e, None): [
       b'\xf1\x872Q0907686J \xf1\x890288',
     ],
@@ -401,7 +391,6 @@ FW_VERSIONS = {
       b'\xf1\x875WA980556C \xf1\x890314',
       b'\xf1\x875WA980556D \xf1\x890364',
     ],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x875WA907572B \xf1\x890395',
       b'\xf1\x875WA907572C \xf1\x890461',
@@ -411,18 +400,16 @@ FW_VERSIONS = {
       b'\xf1\x875WA980653D \xf1\x893405',
     ],
   },
-  CAR.VOLKSWAGEN_ID3_MK1: {     
+  CAR.VOLKSWAGEN_ID3_MK1: {
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x871EA907121AH\xf1\x896050\xf1\x82010\x00',
     ],
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906012DG\xf1\x892604',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
     (Ecu.srs, 0x715, None): [
       b'\xf1\x871EA959655CD\xf1\x890366',
     ],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980654L \xf1\x895332',
     ],
@@ -440,29 +427,20 @@ FW_VERSIONS = {
     ],
   },
   CAR.VOLKSWAGEN_ID3_MK2: {
-    (Ecu.inverter, 0x17fc007c, None): [],
-    (Ecu.engine, 0x17fc0076, None): [],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980654P \xf1\x895570',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907567D \xf1\x890250',
     ],
   },
-  CAR.VOLKSWAGEN_ID4_MK1: {      
+  CAR.VOLKSWAGEN_ID4_MK1: {
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x871EA907121BE\xf1\x896046\xf1\x82020\x00',
     ],
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906012DK\xf1\x892603',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
     (Ecu.srs, 0x715, None): [
       b'\xf1\x871EA959655EA\xf1\x890376',
       b'\xf1\x875WA959655R \xf1\x890717',
@@ -494,16 +472,10 @@ FW_VERSIONS = {
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906014DR\xf1\x893630',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980653G \xf1\x895570',
       b'\xf1\x871EA980653B \xf1\x895510',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907567D \xf1\x890250',
       b'\xf1\x871EA907567C \xf1\x890099',
@@ -1050,10 +1022,6 @@ FW_VERSIONS = {
     ],
   },
   CAR.AUDI_A3_MK4: {
-    (Ecu.engine, 0x7e0, None): [],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871N3907567E \xf1\x890550',
     ],
@@ -1124,34 +1092,16 @@ FW_VERSIONS = {
       b'\xf1\x872Q0907572T \xf1\x890383',
     ],
   },
-  CAR.AUDI_Q4_MK1: {      
-    (Ecu.inverter, 0x17fc007c, None): [],
-    (Ecu.engine, 0x17fc0076, None): [],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
-    (Ecu.fwdCamera, 0x74f, None): [],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
-    (Ecu.fwdRadar, 0x757, None): [],
-  },
-  CAR.AUDI_Q4_MK2: {      
+  CAR.AUDI_Q4_MK2: {
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x870ET907121G \xf1\x897260\xf1\x82040',
     ],
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906014GC\xf1\x894064',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980654M \xf1\x895556',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907567B \xf1\x890232',
     ],
@@ -1263,14 +1213,12 @@ FW_VERSIONS = {
     ],
   },
   CAR.SEAT_LEON_MK4: {
-    (Ecu.engine, 0x7e0, None): [],
     (Ecu.transmission, 0x7e1, None): [
       b'\xf1\x870CW906556JA\xf1\x890780',
     ],
     (Ecu.srs, 0x715, None): [
       b'\xf1\x871EA959655CK\xf1\x890166',
     ],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.cornerRadar, 0x74e, None): [
       b'\xf1\x872Q0907686E \xf1\x890284',
     ],
@@ -1287,14 +1235,13 @@ FW_VERSIONS = {
       b'\xf1\x875WA980653A \xf1\x893129',
     ],
   },
-  CAR.CUPRA_BORN_MK1: {      
+  CAR.CUPRA_BORN_MK1: {
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x871EA907121AJ\xf1\x893510\xf1\x8201S\x00',
     ],
     (Ecu.engine, 0x17fc0076, None): [ # also on 0x18da01f1 with norm bit flips
       b'\xf1\x870EA906012EC\xf1\x892855',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
     (Ecu.srs, 0x715, None): [
       b'\xf1\x871EA959655EH\xf1\x890381',
     ],
@@ -1317,24 +1264,6 @@ FW_VERSIONS = {
       b'\xf1\x871EA907572H \xf1\x890234',
     ],
   },
-  CAR.SKODA_ENYAQ_MK1: {      
-    (Ecu.inverter, 0x17fc007c, None): [],
-    (Ecu.engine, 0x17fc0076, None): [],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [
-      b'\xf1\x871EA959655EA\xf1\x890376',
-    ],
-    (Ecu.eps, 0x712, None): [],
-    (Ecu.fwdCamera, 0x74f, None): [
-      b'\xf1\x871EA980654L \xf1\x895332',
-    ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
-    (Ecu.fwdRadar, 0x757, None): [
-      b'\xf1\x871EA907572H \xf1\x890234',
-    ],
-  },
   CAR.SKODA_ENYAQ_MK2: {
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x870ET907121G \xf1\x897260\xf1\x82040',
@@ -1342,15 +1271,9 @@ FW_VERSIONS = {
     (Ecu.engine, 0x17fc0076, None): [
       b'\xf1\x870EA906014FS\xf1\x894051',
     ],
-    (Ecu.transmission, 0x7e1, None): [],
-    (Ecu.srs, 0x715, None): [],
-    (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
       b'\xf1\x871EA980654M \xf1\x895556',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907567B \xf1\x890232',
     ],
@@ -1565,6 +1488,7 @@ FW_VERSIONS = {
     (Ecu.engine, 0x7e0, None): [
       b'\xf1\x8704E906027BS\xf1\x892887',
       b'\xf1\x8704E906027BT\xf1\x899042',
+      b'\xf1\x8704E906027EA\xf1\x892929',
       b'\xf1\x8704L906026ET\xf1\x891343',
       b'\xf1\x8704L906026ET\xf1\x891990',
       b'\xf1\x8704L906026FP\xf1\x891196',
@@ -1579,6 +1503,7 @@ FW_VERSIONS = {
       b'\xf1\x873G0906264A \xf1\x890002',
     ],
     (Ecu.transmission, 0x7e1, None): [
+      b'\xf1\x870CW300041H \xf1\x891009',
       b'\xf1\x870CW300042H \xf1\x891601',
       b'\xf1\x870CW300043B \xf1\x891603',
       b'\xf1\x870CW300049Q \xf1\x890906',
@@ -1608,6 +1533,7 @@ FW_VERSIONS = {
       b'\xf1\x875Q0959655CA\xf1\x890403\xf1\x82\x1331310031313100313151823143319331423100',
       b'\xf1\x875Q0959655CH\xf1\x890421\xf1\x82\x1333310031313100313152025350539331463100',
       b'\xf1\x875Q0959655CH\xf1\x890421\xf1\x82\x1333310031313100313152855372539331463100',
+      b'\xf1\x875QD959655L \xf1\x890318\xf1\x82\x1331310031413100313131014131419331313100',
     ],
     (Ecu.eps, 0x712, None): [
       b'\xf1\x875Q0909143K \xf1\x892033\xf1\x820514UZ070203',
@@ -1620,8 +1546,10 @@ FW_VERSIONS = {
       b'\xf1\x875Q0910143C \xf1\x892211\xf1\x82\x0567UZ070500',
       b'\xf1\x875Q0910143C \xf1\x892211\xf1\x82\x0567UZ070600',
       b'\xf1\x875Q0910143C \xf1\x892211\xf1\x82\x0567UZ070700',
+      b'\xf1\x875QD909144B \xf1\x891072\xf1\x82\x0521B00503A1',
     ],
     (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x872Q0907572T \xf1\x89X383',
       b'\xf1\x873Q0907572B \xf1\x890192',
       b'\xf1\x873Q0907572B \xf1\x890194',
       b'\xf1\x873Q0907572C \xf1\x890195',

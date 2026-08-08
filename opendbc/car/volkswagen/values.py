@@ -1,7 +1,6 @@
 from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from enum import Enum, IntFlag, StrEnum
-from typing import List, Tuple
 
 from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, DT_CTRL, PlatformConfig, Platforms, structs, uds
 from opendbc.car.lateral import CurvatureSteeringLimits
@@ -120,13 +119,12 @@ class CarControllerParams:
       self.STEERING_POWER_MAX      = 50    # HCA_03 maximum steering power, percentage
       self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
-      
+
       self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
       self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)
 
       # Longitudinal constants
       self.ACCEL_INACTIVE = 3.01  # m/s^2
-      self.ACCEL_OVERRIDE = 0.00  # m/s^2
       self.JERK_LIMIT = 4.0  # m/s^3
       self.STARTING_ACCEL = 0.85  # m/s^2, minimum acceleration needed for a reliable brake release
       self.STARTING_VEGO = 0.5  # m/s, keep the start request active until the car is moving
@@ -135,7 +133,7 @@ class CarControllerParams:
         self.shifter_values = can_define.dv["Gateway_73"]["GE_Fahrstufe"]
       else:
         self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
-      
+
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
 
       BASE_BUTTONS = [
@@ -360,7 +358,7 @@ class Footnote(Enum):
     "in software, but doesn't yet have a harness available from the comma store.",
     Column.HARDWARE)
   FORD_MEB = CarFootnote(
-    "Some Ford models are based on Volkswagen MEB plattform.",
+    "Some Ford models are based on Volkswagen MEB platform.",
     Column.MODEL)
 
 
@@ -374,7 +372,7 @@ class VWCarDocs(CarDocs):
     self.footnotes.append(Footnote.VW_EXP_LONG)
     if "SKODA" in CP.carFingerprint:
       self.footnotes.append(Footnote.SKODA_HEATED_WINDSHIELD)
-      
+
     if "FORD" in CP.carFingerprint:
       self.footnotes.append(Footnote.FORD_MEB)
 
@@ -445,7 +443,7 @@ class CAR(Platforms):
   VOLKSWAGEN_GOLF_MK7 = VolkswagenMQBPlatformConfig(
     [
       VWCarDocs("Volkswagen e-Golf 2014-20"),
-      VWCarDocs("Volkswagen Golf 2015-20", auto_resume=False),
+      VWCarDocs("Volkswagen Golf 2015-19", auto_resume=False),
       VWCarDocs("Volkswagen Golf Alltrack 2015-19", auto_resume=False),
       VWCarDocs("Volkswagen Golf GTD 2015-20"),
       VWCarDocs("Volkswagen Golf GTE 2015-20"),
@@ -649,7 +647,7 @@ class CAR(Platforms):
     [
       VWCarDocs("CUPRA Ateca 2018-23"),
       VWCarDocs("SEAT Ateca 2016-23"),
-      VWCarDocs("SEAT Leon 2014-20"),
+      VWCarDocs("SEAT Leon 2014-19"),
     ],
     VolkswagenCarSpecs(mass=1300, wheelbase=2.64),
     chassis_codes={"5F"},
@@ -731,6 +729,9 @@ class CAR(Platforms):
 
 
 def match_fw_to_car_fuzzy(live_fw_versions, vin, offline_fw_versions) -> set[str]:
+  if len(vin) != 17:
+    return set()
+
   candidates = set()
 
   # Compile all FW versions for each ECU
@@ -747,7 +748,7 @@ def match_fw_to_car_fuzzy(live_fw_versions, vin, offline_fw_versions) -> set[str
 
   for platform in CAR:
     valid_ecus = set()
-    for ecu in offline_fw_versions[platform]:
+    for ecu in offline_fw_versions.get(platform, {}):
       addr = ecu[1:]
       if ecu[0] not in CHECK_FUZZY_ECUS:
         continue
@@ -823,10 +824,6 @@ FW_QUERY_CONFIG = FwQueryConfig(
     ),
   ]],
   non_essential_ecus={Ecu.eps: list(CAR)},
-  extra_ecus=[(Ecu.fwdCamera, 0x74f, None),
-              (Ecu.parkingAdas, 0x70a, None),
-              (Ecu.cornerRadar, 0x74e, None),
-              (Ecu.adas, 0x769, None)],
   match_fw_to_car_fuzzy=match_fw_to_car_fuzzy,
 )
 

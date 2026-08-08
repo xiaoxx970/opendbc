@@ -1,14 +1,12 @@
-import math
 
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.interfaces import RadarInterfaceBase
-from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.volkswagen.values import DBC, VolkswagenFlags
 
 # radar object drel is not end of radar facing side but probably the longitudinal center of object
 # dbc drel offset of -3.6m is measured for a point mass type object (person)
-# drel uncertainty statically subtracts something in beetwen the first half to end of a typical car length 
+# drel uncertainty statically subtracts something in between the first half to end of a typical car length
 DREL_FRONT_EDGE_MARGIN = 1.5 # in m
 
 RADAR_ADDR = 0x24F
@@ -99,7 +97,7 @@ class RadarInterface(RadarInterfaceBase):
 
     active_objects: dict[int, tuple[float, float, float]] = {}
     for obj_id_sig, long_sig, lat_sig, vel_sig in SIGNAL_SETS:
-      obj_id = get(obj_id_sig)
+      obj_id = int(get(obj_id_sig))
       if obj_id == NO_OBJECT_ID:
         continue
 

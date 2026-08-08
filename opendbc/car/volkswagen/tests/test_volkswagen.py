@@ -2,6 +2,7 @@ import random
 import re
 import unittest
 
+from opendbc.can import CANParser
 from opendbc.car import DT_CTRL, structs
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
@@ -19,6 +20,14 @@ class TestVolkswagenCarState(unittest.TestCase):
   def test_car_not_ready_schema(self):
     car_state = structs.CarState()
     assert not car_state.carNotReady
+
+
+class TestVolkswagenDbc(unittest.TestCase):
+  def test_acc_event_speed_signal(self):
+    for dbc in ("vw_meb_generated", "vw_meb_2024_generated", "vw_mqbevo_generated", "vw_mqbevo_2024_generated"):
+      with self.subTest(dbc=dbc):
+        signals = CANParser(dbc, [("ACC_19", 0)], 0).vl["ACC_19"]
+        assert "ACC_Event_Wunschgeschw" in signals
 
 
 class TestVolkswagenHCAMitigation(unittest.TestCase):
@@ -64,7 +73,8 @@ class TestVolkswagenPlatformConfigs(unittest.TestCase):
           assert not model_years_overlap, f"Ambiguous VIN attributes: {platform} and {comp}"
 
   def test_custom_fuzzy_fingerprinting(self):
-    all_radar_fw = list({fw for ecus in FW_VERSIONS.values() for fw in ecus[Ecu.fwdRadar, 0x757, None]})
+    radar_ecu = (Ecu.fwdRadar, 0x757, None)
+    all_radar_fw = list({fw for ecus in FW_VERSIONS.values() for fw in ecus.get(radar_ecu, ())})
 
     for platform in CAR:
       for wmi in WMI:
@@ -79,9 +89,10 @@ class TestVolkswagenPlatformConfigs(unittest.TestCase):
 
               # Check a few FW cases - expected, unexpected
               for radar_fw in random.sample(all_radar_fw, 5) + [b'\xf1\x875Q0907572G \xf1\x890571', b'\xf1\x877H9907572AA\xf1\x890396']:
+                has_radar_fw = bool(FW_VERSIONS.get(platform, {}).get(radar_ecu))
                 should_match = ((wmi in platform.config.wmis and chassis_code in platform.config.chassis_codes) and
                                 (not platform.config.model_years or model_year in platform.config.model_years) and
-                                radar_fw in all_radar_fw)
+                                radar_fw in all_radar_fw and has_radar_fw)
 
                 live_fws = {(0x757, None): [radar_fw]}
                 matches = FW_QUERY_CONFIG.match_fw_to_car_fuzzy(live_fws, vin, FW_VERSIONS)
