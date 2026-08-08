@@ -353,6 +353,7 @@ class CarState(CarStateBase, MadsCarState):
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled   = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
+    ret.carNotReady = pt_cp.vl["Motor_51"]["TSK_Status"] == 5  # brake_only
 
     if self.CP.pcmCruise:
       # Cruise Control mode; check for distance UI setting from the radar.

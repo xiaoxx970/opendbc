@@ -2,7 +2,7 @@ import random
 import re
 import unittest
 
-from opendbc.car import DT_CTRL
+from opendbc.car import DT_CTRL, structs
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
 from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
@@ -13,6 +13,12 @@ Ecu = CarParams.Ecu
 CHASSIS_CODE_PATTERN = re.compile('[A-Z0-9]{2}')
 # TODO: determine the unknown groups
 SPARE_PART_FW_PATTERN = re.compile(b'\xf1\x87(?P<gateway>[0-9][0-9A-Z]{2})(?P<unknown>[0-9][0-9A-Z][0-9])(?P<unknown2>[0-9A-Z]{2}[0-9])([A-Z0-9]| )')
+
+
+class TestVolkswagenCarState(unittest.TestCase):
+  def test_car_not_ready_schema(self):
+    car_state = structs.CarState()
+    assert not car_state.carNotReady
 
 
 class TestVolkswagenHCAMitigation(unittest.TestCase):
