@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import unittest
+from copy import deepcopy
 from collections import Counter, defaultdict
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -172,7 +173,11 @@ class TestCarModelBase(unittest.TestCase):
     cls.raw_can_keys = {(msg.address, msg.src) for _, messages in cls.can_msgs for msg in messages if msg.src < 128}
     cls.CarInterface = interfaces[cls.platform]
     cls.CP = cls.CarInterface.get_params(cls.platform, cls.fingerprint, car_fw, alpha_long, False, docs=False)
+    cls.CP_SP = cls.CarInterface.get_params_sp(cls.CP, cls.platform, cls.fingerprint, car_fw, alpha_long, False, docs=False)
+    cls.CP_IC = cls.CarInterface.get_params_ic(cls.CP, cls.platform, cls.fingerprint, car_fw, alpha_long, False, docs=False)
     assert cls.CP
+    assert cls.CP_SP
+    assert cls.CP_IC
     assert cls.CP.carFingerprint == cls.platform
 
   @classmethod
@@ -180,10 +185,11 @@ class TestCarModelBase(unittest.TestCase):
     del cls.can_msgs
 
   def setUp(self):
-    self.CI = self.CarInterface(self.CP.copy())
+    self.CI = self.CarInterface(self.CP.copy(), deepcopy(self.CP_SP), deepcopy(self.CP_IC))
     assert self.CI
 
     self.safety = libsafety_py.libsafety
+    self.safety.set_current_safety_param_sp(self.CP_SP.safetyParam)
     cfg = self.CP.safetyConfigs[-1]
     set_status = self.safety.set_safety_hooks(cfg.safetyModel.raw, cfg.safetyParam)
     self.assertEqual(0, set_status, f"failed to set safetyModel {cfg}")
@@ -206,15 +212,17 @@ class TestCarModelBase(unittest.TestCase):
   def test_car_interface(self):
     can_invalid_cnt = 0
     CC = structs.CarControl().as_reader()
+    CC_SP = structs.CarControlSP()
+    CC_IC = structs.CarControlIC()
     for i, msg in enumerate(self.can_msgs):
-      CS = self.CI.update(normalize_can_buses(msg, self.raw_can_keys))
-      self.CI.apply(CC, msg[0])
+      CS, _, _ = self.CI.update(normalize_can_buses(msg, self.raw_can_keys))
+      self.CI.apply(CC, CC_SP, CC_IC, msg[0])
       if i > 250:
         can_invalid_cnt += not CS.canValid
     self.assertEqual(can_invalid_cnt, 0)
 
   def test_radar_interface(self):
-    RI = self.CarInterface.RadarInterface(self.CP)
+    RI = self.CarInterface.RadarInterface(self.CP, self.CP_SP)
     assert RI
 
     error_cnt = 0
@@ -291,17 +299,25 @@ class TestCarModelBase(unittest.TestCase):
       self.skipTest("SecOC transmit tests require the vehicle key")
 
     controller_params = self.CP
+    controller_params_sp = self.CP_SP
+    controller_params_ic = self.CP_IC
     if self.CP.brand == "volkswagen" and self.CP.flags & VolkswagenFlags.MLB and self.CP.openpilotLongitudinalControl:
       # Some archived MLB routes record alpha longitudinal, which current MLB safety does not support.
       controller_params = self.CarInterface.get_params(self.platform, self.fingerprint, self.CP.carFw, False, False, docs=False)
+      controller_params_sp = self.CarInterface.get_params_sp(controller_params, self.platform, self.fingerprint,
+                                                             self.CP.carFw, False, False, docs=False)
+      controller_params_ic = self.CarInterface.get_params_ic(controller_params, self.platform, self.fingerprint,
+                                                             self.CP.carFw, False, False, docs=False)
 
     def test_car_controller(car_control):
       now_nanos = 0
       msgs_sent = 0
-      CI = self.CarInterface(controller_params)
+      CI = self.CarInterface(controller_params, controller_params_sp, controller_params_ic)
+      CC_SP = structs.CarControlSP()
+      CC_IC = structs.CarControlIC()
       for _ in range(round(10.0 / DT_CTRL)):
         CI.update([])
-        _, sendcan = CI.apply(car_control, now_nanos)
+        _, sendcan = CI.apply(car_control, CC_SP, CC_IC, now_nanos)
         now_nanos += DT_CTRL * 1e9
         msgs_sent += len(sendcan)
         for addr, dat, bus in sendcan:
@@ -344,7 +360,7 @@ class TestCarModelBase(unittest.TestCase):
       self.safety.safety_rx_hook(packet)
 
       can = [(time.monotonic_ns(), [CanData(address=address, dat=dat, src=bus)])]
-      CS = self.CI.update(can)
+      CS, _, _ = self.CI.update(can)
       if n < 5:
         continue
 
@@ -388,7 +404,8 @@ class TestCarModelBase(unittest.TestCase):
     vehicle_speed_seen = self.CP.steerControlType == SteerControlType.angle and not self.CP.notCar
 
     for idx, can in enumerate(self.can_msgs):
-      CS = self.CI.update(can).as_reader()
+      CS, _, _ = self.CI.update(can)
+      CS = CS.as_reader()
       for msg in (msg for msg in can[1] if msg.src < 64):
         packet = libsafety_py.make_CANPacket(msg.address, msg.src % 4, msg.dat)
         ret = self.safety.safety_rx_hook(packet)
