@@ -16,7 +16,7 @@ from opendbc.car import DT_CTRL, gen_empty_fingerprint, structs
 from opendbc.car.can_definitions import CanData
 from opendbc.car.car_helpers import FRAME_FINGERPRINT, interfaces
 from opendbc.car.fingerprints import MIGRATION
-from opendbc.car.honda.values import HondaFlags
+from opendbc.car.honda.values import CAR as HONDA, HondaFlags
 from opendbc.car.logreader import LogReader
 from opendbc.car.structs import car
 from opendbc.car.tests.routes import CarTestRoute, non_tested_cars, routes
@@ -367,7 +367,11 @@ class TestCarModelBase(unittest.TestCase):
       if self.safety.get_gas_pressed_prev() != prev_panda_gas:
         self.assertEqual(CS.gasPressed, self.safety.get_gas_pressed_prev())
       if self.safety.get_brake_pressed_prev() != prev_panda_brake:
-        self.assertEqual(CS.brakePressed, self.safety.get_brake_pressed_prev())
+        brake_pressed = CS.brakePressed
+        if (CS.brakePressed and not self.safety.get_brake_pressed_prev() and
+            self.CP.carFingerprint in (HONDA.HONDA_PILOT, HONDA.HONDA_RIDGELINE) and CS.deprecated.brake > 0.05):
+          brake_pressed = False
+        self.assertEqual(brake_pressed, self.safety.get_brake_pressed_prev())
       if self.safety.get_regen_braking_prev() != prev_panda_regen_braking:
         self.assertEqual(CS.regenBraking, self.safety.get_regen_braking_prev())
       if self.safety.get_steering_disengage_prev() != prev_panda_steering_disengage:
@@ -432,7 +436,11 @@ class TestCarModelBase(unittest.TestCase):
         checks["steeringAngleDeg"] += (angle_can > self.safety.get_angle_meas_max() + 1 or
                                        angle_can < self.safety.get_angle_meas_min() - 1)
 
-      checks["brakePressed"] += CS.brakePressed != self.safety.get_brake_pressed_prev()
+      brake_pressed = CS.brakePressed
+      if (CS.brakePressed and not self.safety.get_brake_pressed_prev() and
+          self.CP.carFingerprint in (HONDA.HONDA_PILOT, HONDA.HONDA_RIDGELINE) and CS.deprecated.brake > 0.05):
+        brake_pressed = False
+      checks["brakePressed"] += brake_pressed != self.safety.get_brake_pressed_prev()
       checks["regenBraking"] += CS.regenBraking != self.safety.get_regen_braking_prev()
       checks["steeringDisengage"] += CS.steeringDisengage != self.safety.get_steering_disengage_prev()
 
