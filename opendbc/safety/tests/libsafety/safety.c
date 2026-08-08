@@ -34,6 +34,10 @@ bool safety_config_valid() {
   return true;
 }
 
+uint32_t safety_compute_checksum(const CANPacket_t *msg) {
+  return current_hooks->compute_checksum(msg);
+}
+
 void set_controls_allowed(bool c){
   controls_allowed = c;
 }

@@ -34,10 +34,14 @@ MSG_ACC_19     = 0x300
 MSG_HCA_03     = 0x303
 MSG_LDW_02     = 0x397
 MSG_MOTOR_14   = 0x3BE
+MSG_DIAGNOSTIC = 0x700
 # sunnypilot: EA messages for AEB mitigation, MSG_MEB_ACC_01 alias for ACC_19
+MSG_AWV_03     = 0xDB
 MSG_EA_01      = 0x1A4
 MSG_EA_02      = 0x1F0
 MSG_MEB_ACC_01 = MSG_ACC_19
+MSG_MEB_AWV_01 = 0x16A954AD
+MSG_STRUKTUREN_01 = 0x24F
 
 
 class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteeringSafetyTest):
@@ -168,6 +172,16 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
   def _button_msg(self, cancel=0, resume=0, _set=0, bus=2):
     values = {"GRA_Abbrechen": cancel, "GRA_Tip_Setzen": _set, "GRA_Tip_Wiederaufnahme": resume}
     return self.packer.make_can_msg_safety("GRA_ACC_01", bus, values)
+
+  def _aeb_msg(self, active):
+    return self.packer.make_can_msg_safety("AWV_03", 2, {"AEB_Active": active})
+
+  def test_non_rx_message_checksums(self):
+    expected_checksums = {"KLR_01": 0x83, "EA_02": 0xC8}
+    for name, expected_checksum in expected_checksums.items():
+      with self.subTest(msg=name):
+        msg = self.packer.make_can_msg_safety(name, 0, {})
+        self.assertEqual(expected_checksum, self.safety.safety_compute_checksum(msg))
 
   def test_curvature_measurements(self):
     self._rx(self._curvature_meas_msg(0.15))
@@ -381,6 +395,28 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
     self.safety.set_gas_pressed_prev(True)
     self.assertTrue(self._tx(self._accel_msg(self.ACCEL_OVERRIDE)))
     self.assertFalse(self._tx(self._accel_msg(MAX_ACCEL)))
+
+  def test_stock_aeb_blocks_accel(self):
+    self.safety.set_controls_allowed(True)
+    self.assertTrue(self._rx(self._aeb_msg(False)))
+    self.assertTrue(self._tx(self._accel_msg(MAX_ACCEL)))
+
+    self.assertTrue(self._rx(self._aeb_msg(True)))
+    self.assertFalse(self._tx(self._accel_msg(MAX_ACCEL)))
+    self.assertTrue(self._tx(self._accel_msg(self.INACTIVE_ACCEL)))
+
+  def test_disable_radar_messages(self):
+    param = VolkswagenSafetyFlags.LONG_CONTROL | VolkswagenSafetyFlags.DISABLE_RADAR
+    self.safety.set_safety_hooks(CarParams.SafetyModel.volkswagenMeb, param)
+    self.safety.init_tests()
+
+    self.assertTrue(self._tx(common.make_msg(0, MSG_AWV_03, 48)))
+    self.assertTrue(self._tx(common.make_msg(0, MSG_MEB_AWV_01, 8)))
+    self.assertTrue(self._tx(common.make_msg(0, MSG_STRUKTUREN_01, 64)))
+
+    for should_tx, data in ((True, b"\x02\x3E\x80\x00\x00\x00\x00\x00"),
+                            (False, b"\x03\xAA\xAA\x00\x00\x00\x00\x00")):
+      self.assertEqual(should_tx, self._tx(common.make_msg(0, MSG_DIAGNOSTIC, dat=data)))
 
   def test_hold_type_safety_check(self):
     # PARKEN engages the EPB and HALTEN holds the car, both with ACC disengaged. KEINE_ANFORDERUNG and
