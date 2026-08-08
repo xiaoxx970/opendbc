@@ -382,6 +382,13 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       tx = false;
     }
 
+    // ACC_Anfahren and ACC_Anhalten carry drive-off and hold requests too.
+    bool acc_anfahren = GET_BIT(msg, 56U);
+    bool acc_anhalten = GET_BIT(msg, 57U);
+    if ((acc_anfahren || acc_anhalten) && !controls_allowed) {
+      tx = false;
+    }
+
     // Active and override status make the drivetrain act on requests and require an active engagement.
     uint8_t acc_status = (msg->data[7] >> 4) & 0x07U;
     bool acc_status_active = (acc_status == VOLKSWAGEN_MEB_ACC_AKTIV_REGELT) ||
