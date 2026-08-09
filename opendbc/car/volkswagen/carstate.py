@@ -32,6 +32,7 @@ class CarState(CarStateBase, MadsCarState):
     self.speed_limit_predicative_type = 0
     self.force_rhd_for_bsm = False
     self.acc_type = 0
+    self.engine_on = True
     self.hca_status_last = None
     self.hca_status_fluct_counter = 0
     self.hca_status_fluctuation_frames = deque()
@@ -353,7 +354,8 @@ class CarState(CarStateBase, MadsCarState):
     ret.cruiseState.enabled = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
 
     tsk_faulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
-    engine_off = pt_cp.vl["Motor_54"]["Engine_On"] == 0
+    self.engine_on = bool(pt_cp.vl["Motor_54"]["Engine_On"])
+    engine_off = not self.engine_on
     long_control_inhibit = pt_cp.vl["VMM_02"]["Long_Control_Inhibit"] == 2
     ret.accFaulted = (self.update_acc_fault(tsk_faulted, engine_off, long_control_inhibit) or
                       (not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) and

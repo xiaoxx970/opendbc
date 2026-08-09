@@ -164,7 +164,7 @@ def get_acc_control(main_switch_on, acc_faulted, long_active, override):
 
 
 def get_acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, esp_hold, override, override_begin, long_disabling,
-                      previous_hold_type, just_reengaged, v_ego):
+                      hold_for_engine_start, previous_hold_type, just_reengaged, v_ego):
   # warning: car is reacting to hold mechanic even with long control off
   release_states = (ACC_HMS_HOLD, ACC_HMS_RELEASE, ACC_HMS_RAMP_RELEASE)
 
@@ -174,7 +174,9 @@ def get_acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stoppi
     else:
       acc_hold_type = ACC_HMS_NO_REQUEST # no hold request
   elif override:
-    if override_begin or (previous_hold_type in release_states and v_ego < HOLD_RELEASE_SPEED):
+    if hold_for_engine_start:
+      acc_hold_type = ACC_HMS_HOLD # keep the car held until the engine is ready to pull away
+    elif override_begin or (previous_hold_type in release_states and v_ego < HOLD_RELEASE_SPEED):
       acc_hold_type = ACC_HMS_RAMP_RELEASE # ramp release of requests at the beginning of override (prevents car error with EPB at low speed)
     else:
       acc_hold_type = ACC_HMS_NO_REQUEST # overriding / no request

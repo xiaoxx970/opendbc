@@ -36,6 +36,37 @@ class TestVolkswagenDbc(unittest.TestCase):
     mebcan.create_blinker_control(packer, 0, stock_values, {"EA_Funktionsstatus": 0}, True, False, True)
 
 
+class TestVolkswagenLongitudinalControl(unittest.TestCase):
+  def get_hold_type(self, **kwargs):
+    values = {
+      "main_switch_on": True,
+      "acc_faulted": False,
+      "long_active": True,
+      "starting": False,
+      "stopping": False,
+      "esp_hold": True,
+      "override": True,
+      "override_begin": True,
+      "long_disabling": False,
+      "hold_for_engine_start": False,
+      "previous_hold_type": mebcan.ACC_HMS_HOLD,
+      "just_reengaged": False,
+      "v_ego": 0.,
+    }
+    return mebcan.get_acc_hold_type(**(values | kwargs))
+
+  def test_override_waits_for_engine_start(self):
+    assert self.get_hold_type(hold_for_engine_start=True) == mebcan.ACC_HMS_HOLD
+    assert self.get_hold_type(hold_for_engine_start=False) == mebcan.ACC_HMS_RAMP_RELEASE
+
+  def test_override_release_sequence(self):
+    assert self.get_hold_type(override=False, stopping=True, hold_for_engine_start=False) == mebcan.ACC_HMS_HOLD
+    assert self.get_hold_type(override_begin=False, previous_hold_type=mebcan.ACC_HMS_RAMP_RELEASE,
+                              v_ego=mebcan.HOLD_RELEASE_SPEED - 0.01) == mebcan.ACC_HMS_RAMP_RELEASE
+    assert self.get_hold_type(override_begin=False, previous_hold_type=mebcan.ACC_HMS_RAMP_RELEASE,
+                              v_ego=mebcan.HOLD_RELEASE_SPEED) == mebcan.ACC_HMS_NO_REQUEST
+
+
 class TestVolkswagenHCAMitigation(unittest.TestCase):
   STUCK_TORQUE_FRAMES = round(CCP.STEER_TIME_STUCK_TORQUE / (DT_CTRL * CCP.STEER_STEP))
 

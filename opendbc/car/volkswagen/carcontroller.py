@@ -213,6 +213,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         # only let the hold confirmation gate full_stop once actually stopped, otherwise openpilot stops
         # requesting deceleration while the wheels are still turning
         esp_hold_stopped = CS.esp_hold_confirmation and CS.out.standstill
+        hold_for_engine_start = bool(self.CP.flags & VolkswagenFlags.MQB_EVO) and long_override and esp_hold_stopped and not CS.engine_on
         if not long_active or CS.out.accFaulted or long_override or stopping or CS.out.vEgo > self.CCP.STARTING_VEGO:
           self.meb_starting = False
         elif starting_request:
@@ -236,7 +237,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         acc_control = self.CCS.get_acc_control(CS.out.cruiseState.available, CS.out.accFaulted, long_active, long_override)
         acc_hold_type = self.CCS.get_acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, long_active, starting, stopping,
                                                    CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling,
-                                                   self.acc_hold_type_last, long_active and not self.long_active_last, CS.out.vEgo)
+                                                   hold_for_engine_start, self.acc_hold_type_last,
+                                                   long_active and not self.long_active_last, CS.out.vEgo)
         self.acc_hold_type_last = acc_hold_type
         self.long_active_last = long_active
         can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CP, self.CCP, CS.acc_type, long_active,
