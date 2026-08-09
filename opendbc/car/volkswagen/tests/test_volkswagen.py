@@ -7,6 +7,7 @@ from opendbc.car import DT_CTRL, structs
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen import mebcan
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
+from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
@@ -21,6 +22,16 @@ class TestVolkswagenCarState(unittest.TestCase):
   def test_car_not_ready_schema(self):
     car_state = structs.CarState()
     assert not car_state.carNotReady
+
+  def test_hca_fault_only_reported_in_drive(self):
+    car_state = CarState.__new__(CarState)
+    car_state.eps_init_complete = True
+    car_state.frame = 1000
+
+    for drive_mode, expected_fault in ((False, False), (True, True)):
+      with self.subTest(drive_mode=drive_mode):
+        _, permanent_fault, _ = car_state.update_hca_state("FAULT", drive_mode=drive_mode)
+        assert permanent_fault == expected_fault
 
 
 class TestVolkswagenDbc(unittest.TestCase):

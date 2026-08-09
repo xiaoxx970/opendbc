@@ -545,7 +545,8 @@ class CarState(CarStateBase, MadsCarState):
     # Treat FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
     # DISABLED means the EPS hasn't been configured to support Lane Assist
     self.eps_init_complete = self.eps_init_complete or (hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600)
-    perm_fault = (drive_mode and hca_status == "DISABLED") or (self.eps_init_complete and hca_status == "FAULT")
+    # HCA can briefly report FAULT when shifting to reverse at high steering angles.
+    perm_fault = drive_mode and (hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT"))
     warning = drive_mode and hca_watchdog_fail
     temp_fault = (drive_mode and hca_status in ("REJECTED", "PREEMPTED")) or not self.eps_init_complete
     return temp_fault, perm_fault, warning
