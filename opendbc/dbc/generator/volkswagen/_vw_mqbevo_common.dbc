@@ -1146,6 +1146,7 @@ BO_ 987 Gateway_72: 8 Gateway_MQB
 
 BO_ 988 Gateway_73: 8 XXX
  SG_ UNKNOWN_1 : 15|2@0+ (1,0) [0|3] "" XXX
+ SG_ EPB_Schalterposition : 35|2@1+ (1,0) [0|3] "" XXX
  SG_ GE_Fahrstufe : 40|4@1+ (1,0) [0|15] "" XXX
  SG_ EPB_Status : 53|3@1+ (1,0) [0|7] "" XXX
  SG_ UNKNOWN_2 : 58|3@0+ (1,0) [0|7] "" XXX
@@ -2047,6 +2048,7 @@ VAL_ 980 BH_Blinker_Fehler 0 "kein_Fehler" 1 "Fehler";
 VAL_ 980 SMLS_PTT 0 "nicht_betaetigt" 1 "PTT_gedrueckt";
 VAL_ 980 WH_Tipwischen_lang 0 "nicht_betaetigt" 1 "betaetigt";
 VAL_ 988 GE_Fahrstufe 0 "Zwischenstellung" 1 "Init" 5 "P" 6 "R" 7 "N" 8 "D" 9 "D" 10 "E" 13 "T" 14 "T" 15 "Fehler";
+VAL_ 988 EPB_Schalterposition 0 "keine_Fahreranforderung" 1 "Fahreranforderung_oeffnen" 2 "Fahreranforderung_schliessen" 3 "Fehler";
 VAL_ 988 EPB_Status 0 "offen" 1 "geschlossen_Parken" 2 "teilgespannt_Halten" 3 "im_Lauf_oeffnen" 4 "im_Lauf_schliessen" 5 "tbd" 6 "Init" 7 "unbekannt";
 VAL_ 1122 PSD_Segment_ID 0 "keine Segmentinformationen vorhanden" 1 "Fehlerwert";
 VAL_ 1122 PSD_Vorgaenger_Segment_ID 0 "keine Segmentinformation vorhanden" 1 "Fehlerwert";

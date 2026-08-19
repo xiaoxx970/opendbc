@@ -247,10 +247,13 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
 
   def __init__(self, CP, CCP):
     super().__init__(CP, CCP)
+    self.CP = CP
     self.long_active = False
     self.long_override = False
     self.acc_enabled = False
     self.starting = False
+    self.hold_for_engine_start = False
+    self.start_stop_info = 0
     self.comfort_accel = 0.0
 
   def reset(self):
@@ -261,7 +264,17 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     self.long_override = False
     self.acc_enabled = False
     self.starting = False
+    self.hold_for_engine_start = False
+    self.start_stop_info = 0
     self.comfort_accel = 0.0
+
+  def _get_hold_type(self, CS, CC) -> int:
+    # Overriding at a stop with the engine auto stopped would ramp the hold away before the engine is
+    # ready, letting the car roll. Stay in HALTEN until it is running again.
+    if self.hold_for_engine_start:
+      self.disengage_ramp_counter = self.RAMP_FRAMES  # keep the ramp primed, HALTEN -> KEINE_ANFORDERUNG faults into park
+      return self.acc_hold_type_vals['HALTEN']
+    return super()._get_hold_type(CS, CC)
 
   def update(self, CS, CC, accel) -> tuple[float, int, int, bool, bool, bool]:
     blocked_by_car = CS.out.accFaulted or CS.out.stockAeb
@@ -269,6 +282,11 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     self.acc_enabled = CC.enabled and not blocked_by_car
     self.long_active = self.acc_enabled and CC.longActive
     self.long_override = self.acc_enabled and CS.out.gasPressed and not CS.out.brakePressed
+
+    # MQB Evo only: the engine can auto stop while held, and it has to be running before the car moves.
+    # CS.esp_hold_confirmation is gated on physical standstill in carstate, so this cannot fire mid crawl.
+    self.hold_for_engine_start = bool(self.CP.flags & VolkswagenFlags.MQB_EVO) and self.long_override and \
+                                 CS.esp_hold_confirmation and not CS.engine_on
 
     long_state = CC.actuators.longControlState
     if not self.long_active or long_state == LongCtrlState.stopping or CS.out.vEgo > self.CCP.STARTING_VEGO:
@@ -297,12 +315,29 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
       effective_cs, effective_cc, self.comfort_accel,
     )
     held = acc_hold_type == self.acc_hold_type_vals['HALTEN'] and CS.esp_hold_confirmation
+
+    # ACC_18.ACC_StartStopp_Info: 2 = engine start mandatory, 1 = auto stop prohibited, 0 = auto stop
+    # allowed. Upstream sends the bare acc_enabled bool, so it can never reach 2 and openpilot cannot
+    # ask for a restart once the engine has auto stopped, leaving the car unable to pull away. held is
+    # gated on physical standstill via carstate, so an auto stop is only permitted once stopped.
+    # Engines are MQB Evo only, MEB is electric and keeps the stock bool.
+    if not (self.CP.flags & VolkswagenFlags.MQB_EVO):
+      self.start_stop_info = int(self.acc_enabled)
+    elif not self.acc_enabled:
+      self.start_stop_info = 0
+    elif leaving_standstill or self.hold_for_engine_start:
+      self.start_stop_info = 2
+    elif held:
+      self.start_stop_info = 0
+    else:
+      self.start_stop_info = 1
+
     return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held
 
 
 def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk, lower_jerk, upper_control_limit, lower_control_limit,
                              accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held, speed,
-                             travel_assist_available):
+                             travel_assist_available, start_stop_info=None):
   # active longitudinal control disables one pedal driving (regen mode) while using overriding mechnism
   # error mitigation when stopping or stopped: (newer gen cars can be very sensitive)
   # - send 0 m stopping distance for cars in kind of parameterized stopping mode (stopping accel -0.2 seen for those cars)
@@ -321,7 +356,8 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
   values = {
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
-    "ACC_StartStopp_Info":        2 if (acc_enabled and leaving_standstill and (CP.flags & VolkswagenFlags.MQB_EVO)) else (1 if acc_enabled else 0),
+    "ACC_StartStopp_Info":        (2 if (acc_enabled and leaving_standstill and (CP.flags & VolkswagenFlags.MQB_EVO)) else (1 if acc_enabled else 0))
+                                  if start_stop_info is None else start_stop_info,
     "ACC_Sollbeschleunigung_02":  accel,
     "ACC_zul_Regelabw_unten":     lower_control_limit if acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE) and not full_stop_no_start else 0,
     "ACC_zul_Regelabw_oben":      upper_control_limit if acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE) and not full_stop_no_start else 0,
