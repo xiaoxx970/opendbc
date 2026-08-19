@@ -252,6 +252,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     self.long_override = False
     self.acc_enabled = False
     self.starting = False
+    self.hold_for_engine_start = False
     self.start_stop_info = 0
     self.comfort_accel = 0.0
 
@@ -263,8 +264,17 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     self.long_override = False
     self.acc_enabled = False
     self.starting = False
+    self.hold_for_engine_start = False
     self.start_stop_info = 0
     self.comfort_accel = 0.0
+
+  def _get_hold_type(self, CS, CC) -> int:
+    # Overriding at a stop with the engine auto stopped would ramp the hold away before the engine is
+    # ready, letting the car roll. Stay in HALTEN until it is running again.
+    if self.hold_for_engine_start:
+      self.disengage_ramp_counter = self.RAMP_FRAMES  # keep the ramp primed, HALTEN -> KEINE_ANFORDERUNG faults into park
+      return self.acc_hold_type_vals['HALTEN']
+    return super()._get_hold_type(CS, CC)
 
   def update(self, CS, CC, accel) -> tuple[float, int, int, bool, bool, bool]:
     blocked_by_car = CS.out.accFaulted or CS.out.stockAeb
@@ -276,6 +286,11 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     self.long_override = (CC.enabled and not CC.longActive and CC.cruiseControl.override and
                           CS.out.gasPressed and not CS.out.brakePressed and not blocked_by_car)
     self.acc_enabled = self.long_active or self.long_override
+
+    # MQB Evo only: the engine can auto stop while held, and it has to be running before the car moves.
+    # CS.esp_hold_confirmation is gated on physical standstill in carstate, so this cannot fire mid crawl.
+    self.hold_for_engine_start = bool(self.CP.flags & VolkswagenFlags.MQB_EVO) and self.long_override and \
+                                 CS.esp_hold_confirmation and not CS.engine_on
 
     stopping = self.long_active and CC.actuators.longControlState == LongCtrlState.stopping
     starting_request = (self.long_active and CC.actuators.longControlState == LongCtrlState.pid and
@@ -318,7 +333,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
       self.start_stop_info = int(self.acc_enabled)
     elif not self.acc_enabled:
       self.start_stop_info = 0
-    elif leaving_standstill:
+    elif leaving_standstill or self.hold_for_engine_start:
       self.start_stop_info = 2
     elif held:
       self.start_stop_info = 0

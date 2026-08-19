@@ -25,7 +25,7 @@ class TestMebLongStateMachine(unittest.TestCase):
 
   @staticmethod
   def make_car_state(v_ego=10.0, available=True, acc_faulted=False, stock_aeb=False,
-                     gas_pressed=False, brake_pressed=False, esp_hold=False, standstill=None):
+                     gas_pressed=False, brake_pressed=False, esp_hold=False, standstill=None, engine_on=True):
     out = SimpleNamespace(
       vEgo=v_ego,
       standstill=(v_ego == 0.0) if standstill is None else standstill,
@@ -35,7 +35,7 @@ class TestMebLongStateMachine(unittest.TestCase):
       gasPressed=gas_pressed,
       brakePressed=brake_pressed,
     )
-    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold)
+    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold, engine_on=engine_on)
 
   @staticmethod
   def make_car_control(enabled=True, long_active=True, override=False, long_state=LongCtrlState.pid):
@@ -206,6 +206,34 @@ class TestMebLongStateMachine(unittest.TestCase):
         CC = self.make_car_control(enabled=False, long_active=False)
         state.update(CS, CC, 0.0)
         self.assertEqual(state.start_stop_info, 0)
+
+  def test_override_holds_until_the_engine_restarts(self):
+    # Overriding at a stop with the engine auto stopped must not ramp the hold away before the engine
+    # is running again, otherwise the car rolls while waiting for it.
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        mqb_evo = bool(platform.config.flags & VolkswagenFlags.MQB_EVO)
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state(v_ego=0.0, esp_hold=True)
+        CC = self.make_car_control(long_state=LongCtrlState.stopping)
+        state.update(CS, CC, -1.0)
+
+        # driver presses the gas while the engine is auto stopped
+        CS = self.make_car_state(v_ego=0.0, esp_hold=True, gas_pressed=True, engine_on=False)
+        CC = self.make_car_control(enabled=True, long_active=False, override=True)
+        _, _, hold_type, _, _, _ = state.update(CS, CC, 0.5)
+        self.assertEqual(state.hold_for_engine_start, mqb_evo)
+        if mqb_evo:
+          self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+          self.assertEqual(state.start_stop_info, 2)
+        else:
+          self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
+
+        # engine running, the hold may ramp away
+        CS.engine_on = True
+        _, _, hold_type, _, _, _ = state.update(CS, CC, 0.5)
+        self.assertFalse(state.hold_for_engine_start)
+        self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
 
   def test_aeb_inactive_field_split_preserves_wire_value(self):
     for platform in self.PLATFORMS:
