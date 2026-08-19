@@ -309,7 +309,13 @@ class CarState(CarStateBase, MadsCarState):
     ret.gasPressed   = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0 # detects accel pedal "a little bit" later than ["Motor_54"]["Accelerator_Pressure"]
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"]) # includes regen braking by user
 
-    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4) # EPB closing or closed (candidate for all plattforms)
+    # EPB_Status reports actuator state, not who requested it. A system initiated close while still
+    # rolling must not disengage openpilot: reporting it withdraws braking mid crawl, which is what
+    # made the EPB jam. Keep braking through the transition and only report a close once stopped.
+    # A driver close request is reported immediately, without waiting for the actuator status.
+    ret.parkingBrake = ((self.CP.flags & VolkswagenFlags.MQB_EVO and pt_cp.vl["Gateway_73"]["EPB_Schalterposition"] == 2) or
+                        pt_cp.vl["ESC_50"]["EPB_Status"] == 1 or  # closed/parked
+                        (pt_cp.vl["ESC_50"]["EPB_Status"] == 4 and ret.standstill))  # closing
     #ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4) # this signal is not working for newer models
 
     # Update door and trunk/hatch lid open status.
@@ -391,7 +397,12 @@ class CarState(CarStateBase, MadsCarState):
     ret.carNotReady = tsk_status == 5 or bool(long_control_inhibit) or radar_disable_failed
 
     if self.CP.flags & VolkswagenFlags.MQB_EVO:
-      self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"])
+      # ESP_Haltebestaetigung is a hold confirmation, not a motion state: it has been seen going high at
+      # 0.69, 1.17, 1.25 and 2.86 km/h. Consumers read this attribute as "stopped and held" (the branch
+      # below derives it from a motion state signal), so gate it on wheel speed to keep that contract.
+      # Without the gate the long state machine latched pull-away mid-deceleration and stopped requesting
+      # ACC braking while still rolling, and the car began closing the EPB while moving.
+      self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"]) and ret.standstill
     else:
       # for hold detection: VMM_02 ESP_Hold Signal is off timing and probably wrong
       # use a motion state signal instead for now
