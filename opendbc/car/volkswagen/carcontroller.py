@@ -202,7 +202,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                            self.long_limit_control.get_upper_limit() if CC_IC.longComfortMode else 0.,
                                                            self.long_limit_control.get_lower_limit() if CC_IC.longComfortMode else 0.,
                                                            accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held,
-                                                           CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available))
+                                                           CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available,
+                                                           self.meb_long_state.start_stop_info))
 
       else:
         starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < 0.25)

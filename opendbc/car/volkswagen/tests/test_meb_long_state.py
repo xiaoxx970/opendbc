@@ -4,7 +4,7 @@ import unittest
 from opendbc.can import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.volkswagen import mebcan
-from opendbc.car.volkswagen.values import CAR, DBC, CarControllerParams
+from opendbc.car.volkswagen.values import CAR, DBC, CarControllerParams, VolkswagenFlags
 
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -31,16 +31,17 @@ class TestMebLongStateMachine(unittest.TestCase):
 
   @staticmethod
   def make_car_state(v_ego=10.0, available=True, acc_faulted=False, stock_aeb=False,
-                     gas_pressed=False, brake_pressed=False, esp_hold=False):
+                     gas_pressed=False, brake_pressed=False, esp_hold=False, standstill=None, engine_on=True):
     out = SimpleNamespace(
       vEgo=v_ego,
+      standstill=(v_ego == 0.0) if standstill is None else standstill,
       cruiseState=SimpleNamespace(available=available),
       accFaulted=acc_faulted,
       stockAeb=stock_aeb,
       gasPressed=gas_pressed,
       brakePressed=brake_pressed,
     )
-    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold)
+    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold, engine_on=engine_on)
 
   @staticmethod
   def make_car_control(enabled=True, long_active=True, override=False, long_state=LongCtrlState.pid):
@@ -95,6 +96,7 @@ class TestMebLongStateMachine(unittest.TestCase):
 
         CS.esp_hold_confirmation = False
         CS.out.vEgo = 1.0  # 3.6 km/h, above the fork launch latch but below ramp release speed
+        CS.out.standstill = False
         _, _, hold_type, braking_to_stop, leaving_standstill, _ = state.update(CS, CC, 0.2)
         self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
         self.assertFalse(braking_to_stop)
@@ -179,6 +181,101 @@ class TestMebLongStateMachine(unittest.TestCase):
         self.assertFalse(leaving_standstill)
         self.assertFalse(state.acc_enabled)
         self.assertEqual(state.comfort_accel, 0.0)
+
+  def test_hold_confirmation_is_trusted_as_a_full_stop(self):
+    # The state machine reads CS.esp_hold_confirmation as "stopped and held". On MQB Evo the raw
+    # ESP_21.ESP_Haltebestaetigung goes high while still rolling (seen at 0.69 to 2.86 km/h), so carstate
+    # gates it on wheel speed before it gets here. This locks in what the state machine may assume:
+    # while the gated confirmation is false the car is treated as moving, however slow it is going.
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state(v_ego=0.35, standstill=False, esp_hold=False)
+        CC = self.make_car_control(long_state=LongCtrlState.stopping)
+        accel, _, hold_type, braking_to_stop, leaving_standstill, held = state.update(CS, CC, -1.0)
+
+        self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+        self.assertEqual(accel, -1.0)  # still braking, not the inactive full stop accel
+        self.assertTrue(braking_to_stop)
+        self.assertFalse(held)
+        self.assertFalse(leaving_standstill)
+
+        # a resume while still rolling must not launch
+        CC.actuators.longControlState = LongCtrlState.pid
+        _, _, _, _, leaving_standstill, _ = state.update(CS, CC, 0.2)
+        self.assertFalse(leaving_standstill)
+        self.assertFalse(state.starting)
+
+        # once carstate reports the gated confirmation the full stop path is allowed
+        CC.actuators.longControlState = LongCtrlState.stopping
+        CS.out.vEgo = 0.0
+        CS.out.standstill = True
+        CS.esp_hold_confirmation = True
+        accel, _, hold_type, braking_to_stop, _, held = state.update(CS, CC, -1.0)
+        self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+        self.assertEqual(accel, state.CCP.ACCEL_INACTIVE)
+        self.assertFalse(braking_to_stop)
+        self.assertTrue(held)
+
+  def test_start_stop_info_requests_engine_restart(self):
+    # 0 = auto stop allowed, 1 = auto stop prohibited, 2 = engine start mandatory
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        state = self.make_state_machine(platform)
+        mqb_evo = bool(platform.config.flags & VolkswagenFlags.MQB_EVO)
+
+        # driving
+        CS = self.make_car_state(v_ego=10.0)
+        CC = self.make_car_control()
+        state.update(CS, CC, 0.5)
+        self.assertEqual(state.start_stop_info, 1)
+
+        # held at a stop, the engine may auto stop
+        CS = self.make_car_state(v_ego=0.0, esp_hold=True)
+        CC = self.make_car_control(long_state=LongCtrlState.stopping)
+        state.update(CS, CC, -1.0)
+        self.assertEqual(state.start_stop_info, 0 if mqb_evo else 1)
+
+        # pulling away, request a restart
+        CC.actuators.longControlState = LongCtrlState.pid
+        state.update(CS, CC, 0.2)
+        self.assertTrue(state.starting)
+        self.assertEqual(state.start_stop_info, 2 if mqb_evo else 1)
+
+        # disengaged
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state(v_ego=10.0)
+        CC = self.make_car_control(enabled=False, long_active=False)
+        state.update(CS, CC, 0.0)
+        self.assertEqual(state.start_stop_info, 0)
+
+  def test_override_holds_until_the_engine_restarts(self):
+    # Overriding at a stop with the engine auto stopped must not ramp the hold away before the engine
+    # is running again, otherwise the car rolls while waiting for it.
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        mqb_evo = bool(platform.config.flags & VolkswagenFlags.MQB_EVO)
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state(v_ego=0.0, esp_hold=True)
+        CC = self.make_car_control(long_state=LongCtrlState.stopping)
+        state.update(CS, CC, -1.0)
+
+        # driver presses the gas while the engine is auto stopped
+        CS = self.make_car_state(v_ego=0.0, esp_hold=True, gas_pressed=True, engine_on=False)
+        CC = self.make_car_control(enabled=True, long_active=False, override=True)
+        _, _, hold_type, _, _, _ = state.update(CS, CC, 0.5)
+        self.assertEqual(state.hold_for_engine_start, mqb_evo)
+        if mqb_evo:
+          self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+          self.assertEqual(state.start_stop_info, 2)
+        else:
+          self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
+
+        # engine running, the hold may ramp away
+        CS.engine_on = True
+        _, _, hold_type, _, _, _ = state.update(CS, CC, 0.5)
+        self.assertFalse(state.hold_for_engine_start)
+        self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
 
   def test_aeb_inactive_field_split_preserves_wire_value(self):
     for platform in self.PLATFORMS:

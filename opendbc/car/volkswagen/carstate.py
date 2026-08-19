@@ -32,6 +32,7 @@ class CarState(CarStateBase, MadsCarState):
     self.speed_limit_predicative_type = 0
     self.force_rhd_for_bsm = False
     self.acc_type = 0
+    self.engine_on = True
     self.hca_status_last = None
     self.hca_status_fluct_counter = 0
     self.hca_status_fluctuation_frames = deque()
@@ -309,7 +310,13 @@ class CarState(CarStateBase, MadsCarState):
     ret.gasPressed   = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0 # detects accel pedal "a little bit" later than ["Motor_54"]["Accelerator_Pressure"]
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"]) # includes regen braking by user
 
-    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4) # EPB closing or closed (candidate for all plattforms)
+    # EPB_Status reports actuator state, not who requested it. A system initiated close while still
+    # rolling must not disengage openpilot: reporting it withdraws braking mid crawl, which is what
+    # made the EPB jam. Keep braking through the transition and only report a close once stopped.
+    # A driver close request is reported immediately, without waiting for the actuator status.
+    ret.parkingBrake = ((self.CP.flags & VolkswagenFlags.MQB_EVO and pt_cp.vl["Gateway_73"]["EPB_Schalterposition"] == 2) or
+                        pt_cp.vl["ESC_50"]["EPB_Status"] == 1 or  # closed/parked
+                        (pt_cp.vl["ESC_50"]["EPB_Status"] == 4 and ret.standstill))  # closing
     #ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4) # this signal is not working for newer models
 
     # Update door and trunk/hatch lid open status.
@@ -356,7 +363,8 @@ class CarState(CarStateBase, MadsCarState):
 
     tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
     tsk_faulted = tsk_status in (6, 7)
-    engine_off = pt_cp.vl["Motor_54"]["Engine_On"] == 0
+    self.engine_on = bool(pt_cp.vl["Motor_54"]["Engine_On"])
+    engine_off = not self.engine_on
 
     # Long_Control_Inhibit is currently identified only in the MEB DBC. MQB
     # Evo uses the same brake_only TSK state below, but has no verified
@@ -391,7 +399,12 @@ class CarState(CarStateBase, MadsCarState):
     ret.carNotReady = tsk_status == 5 or bool(long_control_inhibit) or radar_disable_failed
 
     if self.CP.flags & VolkswagenFlags.MQB_EVO:
-      self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"])
+      # ESP_Haltebestaetigung is a hold confirmation, not a motion state: it has been seen going high at
+      # 0.69, 1.17, 1.25 and 2.86 km/h. Consumers read this attribute as "stopped and held" (the branch
+      # below derives it from a motion state signal), so gate it on wheel speed to keep that contract.
+      # Without the gate the long state machine latched pull-away mid-deceleration and stopped requesting
+      # ACC braking while still rolling, and the car began closing the EPB while moving.
+      self.esp_hold_confirmation = bool(pt_cp.vl["ESP_21"]["ESP_Haltebestaetigung"]) and ret.standstill
     else:
       # for hold detection: VMM_02 ESP_Hold Signal is off timing and probably wrong
       # use a motion state signal instead for now
