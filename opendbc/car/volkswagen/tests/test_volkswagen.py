@@ -17,16 +17,56 @@ SPARE_PART_FW_PATTERN = re.compile(b'\xf1\x87(?P<gateway>[0-9][0-9A-Z]{2})(?P<un
 
 
 class TestVolkswagenCarState(unittest.TestCase):
-  def test_hca_fault_only_reported_in_drive(self):
-    # HCA can briefly report FAULT when shifting to reverse at high steering angles
+  @staticmethod
+  def car_state():
     car_state = CarState.__new__(CarState)
     car_state.eps_init_complete = True
     car_state.frame = 1000
+    car_state.hca_fault_frames = 0
+    return car_state
 
+  def test_hca_fault_only_reported_in_drive(self):
+    # HCA can briefly report FAULT when shifting to reverse at high steering angles
     for drive_mode, expected_fault in ((False, False), (True, True)):
       with self.subTest(drive_mode=drive_mode):
-        _, permanent_fault, _ = car_state.update_hca_state("FAULT", drive_mode=drive_mode)
+        car_state = self.car_state()
+        for _ in range(CCP.HCA_PERMANENT_FAULT_FRAMES):
+          _, permanent_fault, _ = car_state.update_hca_state("FAULT", drive_mode=drive_mode)
         assert permanent_fault == expected_fault
+
+  def test_hca_fault_blip_is_temporary(self):
+    # HCA blips FAULT when lateral is handed back at a high steering angle, e.g. a door opening at
+    # a standstill. It must not raise a permanent fault, which alerts "LKAS Fault: Restart the Car".
+    car_state = self.car_state()
+
+    for _ in range(CCP.HCA_PERMANENT_FAULT_FRAMES - 1):
+      temporary_fault, permanent_fault, _ = car_state.update_hca_state("FAULT")
+      assert temporary_fault
+      assert not permanent_fault
+
+    # the blip clears, and a later isolated blip must not resume the previous count
+    temporary_fault, permanent_fault, _ = car_state.update_hca_state("READY")
+    assert not temporary_fault
+    assert not permanent_fault
+
+    temporary_fault, permanent_fault, _ = car_state.update_hca_state("FAULT")
+    assert temporary_fault
+    assert not permanent_fault
+
+  def test_hca_fault_latches_when_persistent(self):
+    car_state = self.car_state()
+
+    for frame in range(CCP.HCA_PERMANENT_FAULT_FRAMES + 10):
+      temporary_fault, permanent_fault, _ = car_state.update_hca_state("FAULT")
+      expected_permanent = frame + 1 >= CCP.HCA_PERMANENT_FAULT_FRAMES
+      assert permanent_fault == expected_permanent
+      assert temporary_fault != expected_permanent
+
+  def test_hca_disabled_is_permanent_immediately(self):
+    # DISABLED means the EPS was never configured for Lane Assist, so there is nothing to debounce
+    car_state = self.car_state()
+    _, permanent_fault, _ = car_state.update_hca_state("DISABLED")
+    assert permanent_fault
 
 
 class TestVolkswagenHCAMitigation(unittest.TestCase):

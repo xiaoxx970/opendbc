@@ -36,6 +36,7 @@ class CarState(CarStateBase, MadsCarState):
     self.hca_status_last = None
     self.hca_status_fluct_counter = 0
     self.hca_status_fluctuation_frames = deque()
+    self.hca_fault_frames = 0
     self.travel_assist_available = False
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
@@ -569,10 +570,16 @@ class CarState(CarStateBase, MadsCarState):
     # Treat FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
     # DISABLED means the EPS hasn't been configured to support Lane Assist
     self.eps_init_complete = self.eps_init_complete or (hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600)
-    # HCA can briefly report FAULT when shifting to reverse at high steering angles.
-    perm_fault = drive_mode and (hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT"))
+    # HCA blips FAULT whenever torque is dropped at a high steering angle: shifting to reverse, or
+    # lateral being handed back at standstill. Those recover within a few frames, so only a fault
+    # that persists is permanent. Until then it stays temporary, which already stops lateral control.
+    hca_fault = self.eps_init_complete and hca_status == "FAULT"
+    self.hca_fault_frames = self.hca_fault_frames + 1 if hca_fault else 0
+    fault_persisted = self.hca_fault_frames >= CarControllerParams.HCA_PERMANENT_FAULT_FRAMES
+    perm_fault = drive_mode and (hca_status == "DISABLED" or fault_persisted)
     warning = drive_mode and hca_watchdog_fail
-    temp_fault = (drive_mode and hca_status in ("REJECTED", "PREEMPTED")) or not self.eps_init_complete
+    temp_fault = (drive_mode and (hca_status in ("REJECTED", "PREEMPTED") or (hca_fault and not fault_persisted))) or \
+                 not self.eps_init_complete
     return temp_fault, perm_fault, warning
     
   def update_acc_fault(self, acc_fault, transient_inhibit=False, recovery_frames=10):
