@@ -388,7 +388,7 @@ class VWCarDocs(CarDocs):
 # FW_VERSIONS for that existing CAR.
 
 class CAR(Platforms):
-  config: VolkswagenMQBPlatformConfig | VolkswagenPQPlatformConfig | VolkswagenMEBPlatformConfig
+  config: VolkswagenMQBPlatformConfig | VolkswagenMQBevoPlatformConfig | VolkswagenPQPlatformConfig | VolkswagenMEBPlatformConfig
 
   FORD_EXPLORER_EV_MK1 = VolkswagenMEBPlatformConfig(
     [VWCarDocs("Ford Explorer EV Limited 2024-25")],
@@ -429,6 +429,14 @@ class CAR(Platforms):
     #VolkswagenCarSpecs(mass=1613, wheelbase=2.6),
     VolkswagenCarSpecs(mass=1550, wheelbase=2.682, steerRatio=15.5, centerToFrontRatio=0.505, tireStiffnessFactor=1.1),
     chassis_codes={"2K"},
+    wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
+  )
+  VOLKSWAGEN_CADDY_MK5 = VolkswagenMQBevoPlatformConfig(
+    [
+      VWCarDocs("Volkswagen Caddy Maxi 2021-26"),
+    ],
+    VolkswagenCarSpecs(mass=1769, wheelbase=2.970),
+    chassis_codes={"SK"},
     wmis={WMI.VOLKSWAGEN_COMMERCIAL_BUS_VAN},
   )
   VOLKSWAGEN_CRAFTER_MK2 = VolkswagenMQBPlatformConfig(
@@ -721,6 +729,12 @@ class CAR(Platforms):
     ],
     VolkswagenCarSpecs(mass=1388, wheelbase=2.68),
     chassis_codes={"NE"},
+    wmis={WMI.SKODA},
+  )
+  SKODA_OCTAVIA_MK4 = VolkswagenMQBevoPlatformConfig(
+    [VWCarDocs("Škoda Octavia 2020-24")],
+    VolkswagenCarSpecs(mass=1600, wheelbase=2.686),
+    chassis_codes={"NX"},
     wmis={WMI.SKODA},
   )
   SKODA_SUPERB_MK3 = VolkswagenMQBPlatformConfig(

@@ -23,6 +23,12 @@ class TestMebLongStateMachine(unittest.TestCase):
     CP = SimpleNamespace(carFingerprint=platform, flags=platform.config.flags)
     return mebcan.SunnypilotMebLongStateMachine(CP, CarControllerParams(CP))
 
+  def test_driver_torque_max_matches_three_nm(self):
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        CP = SimpleNamespace(carFingerprint=platform, flags=platform.config.flags)
+        self.assertEqual(CarControllerParams(CP).STEER_DRIVER_MAX, 300)
+
   @staticmethod
   def make_car_state(v_ego=10.0, available=True, acc_faulted=False, stock_aeb=False,
                      gas_pressed=False, brake_pressed=False, esp_hold=False, standstill=None, engine_on=True):
@@ -100,7 +106,7 @@ class TestMebLongStateMachine(unittest.TestCase):
         _, _, hold_type, _, _, _ = state.update(CS, CC, 0.2)
         self.assertEqual(hold_type, mebcan.ACC_HMS_NO_REQUEST)
 
-  def test_enabled_without_long_active_stays_inactive(self):
+  def test_enabled_without_long_active_preserves_acc_session(self):
     for platform in self.PLATFORMS:
       with self.subTest(platform=platform):
         state = self.make_state_machine(platform)
@@ -108,19 +114,55 @@ class TestMebLongStateMachine(unittest.TestCase):
         CC = self.make_car_control(enabled=True, long_active=False, override=True)
         accel, status, hold_type, braking_to_stop, leaving_standstill, _ = state.update(CS, CC, 0.5)
 
-        self.assertEqual(accel, state.CCP.ACCEL_INACTIVE)
-        self.assertEqual(status, mebcan.ACC_CTRL_ENABLED)
+        self.assertEqual(accel, 0.5)
+        self.assertEqual(status, mebcan.ACC_CTRL_ACTIVE)
         self.assertEqual(hold_type, mebcan.ACC_HMS_NO_REQUEST)
         self.assertFalse(braking_to_stop)
         self.assertFalse(leaving_standstill)
-        self.assertFalse(state.acc_enabled)
+        self.assertTrue(state.acc_enabled)
+        self.assertFalse(state.long_override)
+
+  def test_gas_override_release_does_not_enter_standby(self):
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state()
+        CC = self.make_car_control()
+
+        accel, status, *_ = state.update(CS, CC, 0.4)
+        self.assertEqual(accel, 0.4)
+        self.assertEqual(status, mebcan.ACC_CTRL_ACTIVE)
+
+        CS.out.gasPressed = True
+        CC.longActive = False
+        CC.cruiseControl.override = True
+        accel, status, *_ = state.update(CS, CC, 0.4)
+        self.assertEqual(accel, state.CCP.ACCEL_OVERRIDE)
+        self.assertEqual(status, mebcan.ACC_CTRL_OVERRIDE)
+
+        # controlsd can clear the override before longActive resumes. CC.enabled
+        # remains the stable ACC-session signal across this transition frame.
+        CS.out.gasPressed = False
+        CC.cruiseControl.override = False
+        accel, status, *_ = state.update(CS, CC, 0.2)
+        self.assertEqual(accel, 0.2)
+        self.assertEqual(status, mebcan.ACC_CTRL_ACTIVE)
+        self.assertNotEqual(accel, state.CCP.ACCEL_INACTIVE)
+        self.assertTrue(state.acc_enabled)
+        self.assertFalse(state.long_active)
+
+        CC.longActive = True
+        accel, status, *_ = state.update(CS, CC, 0.3)
+        self.assertEqual(accel, 0.3)
+        self.assertEqual(status, mebcan.ACC_CTRL_ACTIVE)
 
   def test_gas_override_and_stock_aeb(self):
     for platform in self.PLATFORMS:
       with self.subTest(platform=platform):
         state = self.make_state_machine(platform)
         CS = self.make_car_state(gas_pressed=True)
-        CC = self.make_car_control(enabled=True, long_active=False, override=True)
+        # The pedal can reach CarState before the override reaches CarControl.
+        CC = self.make_car_control(enabled=True, long_active=False, override=False)
         accel, status, _, braking_to_stop, leaving_standstill, _ = state.update(CS, CC, 0.5)
         self.assertEqual(accel, state.CCP.ACCEL_OVERRIDE)
         self.assertEqual(status, mebcan.ACC_CTRL_OVERRIDE)

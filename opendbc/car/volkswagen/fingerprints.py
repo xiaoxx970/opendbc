@@ -411,6 +411,20 @@ FW_VERSIONS = {
       b'\xf1\x875WA980653D \xf1\x893405',
     ],
   },
+  CAR.VOLKSWAGEN_CADDY_MK5: {
+    (Ecu.cornerRadar, 0x74e, None): [
+      b'\xf1\x872Q0907686G \xf1\x890287',
+    ],
+    (Ecu.adas, 0x769, None): [
+      b'\xf1\x875WA980556B \xf1\x890254',
+    ],
+    (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x875WA907572C \xf1\x890461',
+    ],
+    (Ecu.fwdCamera, 0x74f, None): [
+      b'\xf1\x875WA980653D \xf1\x893403',
+    ],
+  },
   CAR.VOLKSWAGEN_ID3_MK1: {     
     (Ecu.inverter, 0x17fc007c, None): [
       b'\xf1\x871EA907121AH\xf1\x896050\xf1\x82010\x00',
@@ -1560,6 +1574,32 @@ FW_VERSIONS = {
       b'\xf1\x875Q0907572K \xf1\x890402\xf1\x82\x0101',
       b'\xf1\x875Q0907572P \xf1\x890682',
       b'\xf1\x875Q0907572R \xf1\x890771',
+    ],
+  },
+  CAR.SKODA_OCTAVIA_MK4: {
+    (Ecu.inverter, 0x17fc007c, None): [
+      b'\xf1\x875WA907080C \xf1\x890230\xf1\x82\x0140',
+    ],
+    (Ecu.engine, 0x7e0, None): [],
+    (Ecu.transmission, 0x7e1, None): [
+      b'\xf1\x870DD906556  \xf1\x890361',
+    ],
+    (Ecu.srs, 0x715, None): [
+      b'\xf1\x871EA959655EG\xf1\x890177',
+    ],
+    (Ecu.eps, 0x712, None): [],
+    (Ecu.fwdCamera, 0x74f, None): [
+      b'\xf1\x875WA980653D \xf1\x893403',
+    ],
+    (Ecu.cornerRadar, 0x74e, None): [],
+    (Ecu.adas, 0x769, None): [
+      b'\xf1\x875WA980556D \xf1\x890344',
+    ],
+    (Ecu.parkingAdas, 0x70a, None): [
+      b'\xf1\x875WA919283C \xf1\x890577',
+    ],
+    (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x875WA907572C \xf1\x890460',
     ],
   },
   CAR.SKODA_SUPERB_MK3: {
