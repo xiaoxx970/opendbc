@@ -126,7 +126,12 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
 
     # Global lateral tuning defaults, can be overridden per-vehicle
-    ret.steerLimitTimer = 0.4
+    # 0.4s let ordinary lane changes trip steerSaturated: the tracking error is judged in
+    # lateral-accel units, so the same curvature error grows with v**2 and clears the threshold on
+    # the highway. Across 250 logged lane changes the timer never climbed past 0.6s, and it never
+    # ran up outside a lane change at all, so 0.8s clears them with margin while still latching on a
+    # sustained shortfall. Matches Honda, Mazda and Toyota; the platform default is 1.0s.
+    ret.steerLimitTimer = 0.8
 
     if ret.flags & VolkswagenFlags.PQ:
       ret.steerActuatorDelay = 0.3
