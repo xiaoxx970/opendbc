@@ -272,7 +272,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         acc_hud_status = self.meb_long_state.acc_status
 
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
-        if CC_IC.cruiseSpeedLimit and CS.out_ic.cruiseSpeedLimit != 0 and self.speed_limit_last != CS.out_ic.cruiseSpeedLimit:
+        # Show a newly detected camera speed limit on the cluster for a few seconds even when
+        # EnableSpeedLimitControl is off. That toggle only gates whether cruise.py adopts the
+        # limit as the set speed; the detection itself (VZE_04 -> cruiseSpeedLimit) is always available.
+        if CS.out_ic.cruiseSpeedLimit != 0 and self.speed_limit_last != CS.out_ic.cruiseSpeedLimit:
           self.speed_limit_changed_timer = self.frame
         self.speed_limit_last = CS.out_ic.cruiseSpeedLimit
         sl_active = self.frame - self.speed_limit_changed_timer < 400
