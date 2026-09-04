@@ -68,7 +68,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
     self.speed_limit_last = 0
-    self.speed_limit_changed_timer = 0
+    self.speed_limit_changed_timer = -400  # never treat boot as a freshly detected speed limit
     self.radar_disabled_warning_timer = 0
     self.hide_ea_error = False
 
