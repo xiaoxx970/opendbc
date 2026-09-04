@@ -66,7 +66,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
     self.lead_distance_bars_last = None
-    self.distance_bar_frame = 0
+    self.distance_bar_frame = -400  # do not show the distance bar selection popup right after boot
     self.speed_limit_last = 0
     self.speed_limit_changed_timer = -400  # never treat boot as a freshly detected speed limit
     self.radar_disabled_warning_timer = 0
@@ -305,7 +305,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
-                                                         CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit))
+                                                         CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit,
+                                                         bool(self.CP.flags & VolkswagenFlags.MQB_EVO), self.frame // self.CCP.ACC_HUD_STEP))
 
       else:
         lead_distance = 0

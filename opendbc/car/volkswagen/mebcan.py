@@ -424,18 +424,34 @@ def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
   return gap
 
 
-def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit):
+# ACC_19 "Heartbeat" as sent by the stock MQBevo radar: a fixed 8 message pattern of two values (never 0)
+ACC_HUD_HEARTBEAT_PATTERN = (420, 261, 261, 420, 261, 420, 420, 261)
+
+
+def get_acc_hud_display_prio(acc_control, fcw_alert):
+  # stock MQBevo radar: 0 = highest (warning), 1 = disabled/override, 2 = active, 3 = standby (no prio)
+  if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+    return 0
+  if acc_control == ACC_HUD_ACTIVE:
+    return 2
+  if acc_control == ACC_HUD_ENABLED:
+    return 3
+  return 1
+
+
+def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
+                           mqb_evo=False, hud_counter=0):
 
   values = {
     "ACC_Status_ACC":                acc_control,
     "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
-    "ACC_Display_Prio":              0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1, # probably keeping warning in front
+    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
     "ACC_Optischer_Fahrerhinweis":   1 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables optical warning
     "ACC_Akustischer_Fahrerhinweis": 3 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables sound warning
     "ACC_Texte_Zusatzanz_02":        11 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # type of warning: Break!
-    "ACC_Abstandsindex_02":          569, # seems to be default for MEB but is not static in every case
+    "ACC_Abstandsindex_02":          0 if mqb_evo else 569, # MQBevo stock radar sends 0; seems to be default for MEB but is not static in every case
     "ACC_EGO_Fahrzeug":              2 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else (1 if acc_control == ACC_HUD_ACTIVE else 0), # red car warn symbol for fcw
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
     "Lead_Type":                     3 if lead_visible else 0, # displaying a car
@@ -451,9 +467,10 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_3":                  get_desired_gap(distance_bars, desired_gap, 3), # desired distance to lead object for distance bar 3
     "Zeitluecke_4":                  get_desired_gap(distance_bars, desired_gap, 4), # desired distance to lead object for distance bar 4
     "Zeitluecke_5":                  get_desired_gap(distance_bars, desired_gap, 5), # desired distance to lead object for distance bar 5
-    "Zeitluecke_Farbe":              1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # yellow (1) or white (0) time gap
+    "Zeitluecke_Farbe":              0 if mqb_evo else (1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0), # yellow (1) or white (0) time gap, MQBevo stock radar always sends 0
     "ACC_Anzeige_Zeitluecke":        show_distance_bars if acc_control != ACC_HUD_DISABLED else 0, # show distance bar selection
     "SET_ME_0X1":                    0x1,    # unknown
+    "Heartbeat":                     ACC_HUD_HEARTBEAT_PATTERN[hud_counter % len(ACC_HUD_HEARTBEAT_PATTERN)] if mqb_evo else 0, # stock radar never sends 0 here
     "SET_ME_0X6A":                   0x6A,   # unknown
     "SET_ME_0XFFFF":                 0xFFFF, # unknown
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
