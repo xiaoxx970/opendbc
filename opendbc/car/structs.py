@@ -200,6 +200,10 @@ class CarControlIC:
   cruiseSpeedLimitPredReactToCurves: bool = auto_field()
   hudLeadFollowTime: float = auto_field()
   hudLeadDistance: float = auto_field()
+  hudSpeedLimit: float = auto_field()  # m/s, current speed limit resolved by sunnypilot (car camera or map), 0 = none
+  hudSpeedLimitFromMap: bool = auto_field()  # hudSpeedLimit comes from map data (nav), not the car camera
+  hudSpeedLimitAhead: bool = auto_field()  # hudSpeedLimit is an upcoming (not yet reached) limit
+  hudCurveSpeed: float = auto_field()  # m/s, vision curve target speed while slowing for a curve, 0 = none
 
 
 @auto_dataclass

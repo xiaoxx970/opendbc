@@ -392,18 +392,24 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
   return commands
 
 
-def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit):
+def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
+                      curve_speed=False, speed_limit_ahead=False):
   acc_event = 0
-  
+  hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
+
   if esp_hold and acc_hud_control == ACC_HUD_ACTIVE:
     acc_event = 3 # acc ready message at standstill
-  elif acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) and speed_limit_predicative:
+  elif hud_on and curve_speed:
+    acc_event = 6 # acc limited by curve (openpilot vision curve control)
+  elif hud_on and speed_limit_predicative:
     if speed_limit_predicative_type == PSD_TYPE_CURV_SPEED:
-      acc_event = 6 # acc limited by curve (predicative)
+      acc_event = 6 # acc limited by curve (predicative, car map data)
     else:
-      acc_event = 4 # acc limited by speed limit by nav (predicative)
-  elif acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) and speed_limit:
-    acc_event = 5 # acc limited by speed limit by camera (recently detected)
+      acc_event = 4 # acc limited by speed limit by nav (predicative, car map data)
+  elif hud_on and speed_limit_ahead:
+    acc_event = 4 # upcoming speed limit from openpilot map data
+  elif hud_on and speed_limit:
+    acc_event = 5 # acc limited by speed limit (camera or map, recently detected)
 
   return acc_event
   

@@ -272,17 +272,37 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         acc_hud_status = self.meb_long_state.acc_status
 
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
-        # Show a newly detected camera speed limit on the cluster for a few seconds even when
-        # EnableSpeedLimitControl is off. That toggle only gates whether cruise.py adopts the
-        # limit as the set speed; the detection itself (VZE_04 -> cruiseSpeedLimit) is always available.
-        if CS.out_ic.cruiseSpeedLimit != 0 and self.speed_limit_last != CS.out_ic.cruiseSpeedLimit:
+
+        # Emulate the stock pACC cluster prompts from openpilot's own data sources:
+        # - camera speed limit (VZE_04 -> cruiseSpeedLimit) has priority, then sunnypilot's map speed limit
+        # - a newly detected/changed limit is shown for a few seconds (independent of EnableSpeedLimitControl,
+        #   that toggle only gates whether cruise.py adopts the limit as the set speed)
+        # - an upcoming map speed limit is shown as "speed limit ahead" while approaching it
+        # - vision curve control (SCC-V) slowing for a curve is shown as "curve" with its target speed
+        camera_limit = CS.out_ic.cruiseSpeedLimit
+        map_limit = CC_IC.hudSpeedLimit if CC_IC.hudSpeedLimitFromMap else 0
+        sl_current = camera_limit if camera_limit != 0 else map_limit
+        if sl_current != 0 and self.speed_limit_last != sl_current:
           self.speed_limit_changed_timer = self.frame
-        self.speed_limit_last = CS.out_ic.cruiseSpeedLimit
+        self.speed_limit_last = sl_current
         sl_active = self.frame - self.speed_limit_changed_timer < 400
-        speed_limit = CS.out_ic.cruiseSpeedLimitPredicative if sl_predicative_active else (CS.out_ic.cruiseSpeedLimit if sl_active else 0)
-          
-        acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active)
-          
+        sl_ahead_active = CC_IC.hudSpeedLimitFromMap and CC_IC.hudSpeedLimitAhead and CC_IC.hudSpeedLimit != 0
+        curve_active = CC_IC.hudCurveSpeed != 0 and CC_IC.hudCurveSpeed < hud_control.setSpeed
+
+        if curve_active:
+          speed_limit = CC_IC.hudCurveSpeed
+        elif sl_predicative_active:
+          speed_limit = CS.out_ic.cruiseSpeedLimitPredicative
+        elif sl_ahead_active:
+          speed_limit = CC_IC.hudSpeedLimit
+        elif sl_active:
+          speed_limit = sl_current
+        else:
+          speed_limit = 0
+
+        acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active,
+                                                   curve_active, sl_ahead_active)
+
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit))
