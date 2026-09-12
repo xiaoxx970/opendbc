@@ -171,8 +171,9 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     values = {"EPS_Lenkmoment": abs(torque), "EPS_VZ_Lenkmoment": torque < 0}
     return self.packer.make_can_msg_safety("LH_EPS_03", 0, values)
 
-  def _button_msg(self, cancel=0, resume=0, _set=0, bus=2):
-    values = {"GRA_Abbrechen": cancel, "GRA_Tip_Setzen": _set, "GRA_Tip_Wiederaufnahme": resume}
+  def _button_msg(self, cancel=0, resume=0, _set=0, main=0, main_momentary=1, bus=2):
+    values = {"GRA_Abbrechen": cancel, "GRA_Tip_Setzen": _set, "GRA_Tip_Wiederaufnahme": resume,
+              "GRA_Hauptschalter": main, "GRA_Typ_Hauptschalter": main_momentary}
     return self.packer.make_can_msg_safety("GRA_ACC_01", bus, values)
 
   def test_curvature_measurements(self):
@@ -229,6 +230,27 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     self.safety.set_controls_allowed(True)
     self._rx(self._button_msg(cancel=1, bus=0))
     self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_momentary_main_button_rising_edge(self):
+    # a momentary main switch cancels ACC in the car, so it must drop controls here too
+    self._rx(self._button_msg(main=0, main_momentary=1, bus=0))
+    self.safety.set_controls_allowed(True)
+    self._rx(self._button_msg(main=1, main_momentary=1, bus=0))
+    self.assertFalse(self.safety.get_controls_allowed())
+
+  def test_momentary_main_button_held(self):
+    # only the rising edge cancels, a held button must not keep clearing controls
+    self._rx(self._button_msg(main=1, main_momentary=1, bus=0))
+    self.safety.set_controls_allowed(True)
+    self._rx(self._button_msg(main=1, main_momentary=1, bus=0))
+    self.assertTrue(self.safety.get_controls_allowed())
+
+  def test_latching_main_switch_not_a_cancel(self):
+    # where the main switch latches it reports ACC main state, not a cancel press
+    self._rx(self._button_msg(main=0, main_momentary=0, bus=0))
+    self.safety.set_controls_allowed(True)
+    self._rx(self._button_msg(main=1, main_momentary=0, bus=0))
+    self.assertTrue(self.safety.get_controls_allowed())
 
   def test_rx_hook_speed_mismatch(self):
     for speed in np.arange(0, 40, 0.5):
