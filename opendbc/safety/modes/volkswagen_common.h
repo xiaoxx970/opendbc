@@ -25,6 +25,9 @@ bool volkswagen_set_button_prev = false;
 extern bool volkswagen_resume_button_prev;
 bool volkswagen_resume_button_prev = false;
 
+extern bool volkswagen_main_button_prev;
+bool volkswagen_main_button_prev = false;
+
 extern bool volkswagen_alt_crc_variant_1;
 bool volkswagen_alt_crc_variant_1 = false;
 
@@ -56,6 +59,7 @@ static void volkswagen_common_init(void) {
   volkswagen_longitudinal = false;
   volkswagen_set_button_prev = false;
   volkswagen_resume_button_prev = false;
+  volkswagen_main_button_prev = false;
   volkswagen_brake_pedal_switch = false;
   volkswagen_brake_pressure_detected = false;
   gen_crc_lookup_table_8(0x2F, volkswagen_crc8_lut_8h2f);
