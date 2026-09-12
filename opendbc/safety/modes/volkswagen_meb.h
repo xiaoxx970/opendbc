@@ -311,6 +311,18 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       if (GET_BIT(msg, 13U)) {
         controls_allowed = false;
       }
+
+      // Where the main switch is a momentary button the car cancels ACC with it, and the car
+      // interface maps it to a cancel button, so drop controls on its rising edge too. Without
+      // this openpilot disengages while panda still allows controls, and a Set or Resume in the
+      // window before the panda heartbeat check clears them leaves the two disagreeing.
+      // Signal: GRA_ACC_01.GRA_Hauptschalter
+      // Signal: GRA_ACC_01.GRA_Typ_Hauptschalter
+      bool main_button = GET_BIT(msg, 12U) && GET_BIT(msg, 14U);
+      if (main_button && !volkswagen_main_button_prev) {
+        controls_allowed = false;
+      }
+      volkswagen_main_button_prev = main_button;
     }
 
     // update brake pedal
