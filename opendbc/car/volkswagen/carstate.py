@@ -12,6 +12,17 @@ from opendbc.sunnypilot.car.volkswagen.mads import MadsCarState
 ButtonType = structs.CarState.ButtonEvent.Type
 
 
+MAX_LEAD_DISTANCE = 150  # ACC_19 Lead_Distance* signal range in m
+
+
+def radar_objects_available(CP) -> bool:
+  # Same conditions the radar interface uses to parse Strukturen_01 (see radar_interface.py)
+  return bool(CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO)) and \
+         not (CP.flags & VolkswagenFlags.DISABLE_RADAR) and \
+         not (CP.flags & VolkswagenFlags.MQB_EVO_GEN2) and \
+         CP.networkLocation == NetworkLocation.gateway
+
+
 class CarState(CarStateBase, MadsCarState):
   def __init__(self, CP, CP_SP, CP_IC):
     super().__init__(CP, CP_SP, CP_IC)
@@ -38,6 +49,24 @@ class CarState(CarStateBase, MadsCarState):
     self.hca_status_fluctuation_frames = deque()
     self.hca_fault_frames = 0
     self.travel_assist_available = False
+    self.neighbour_lead_distance = (0.0, 0.0)  # (left, right) nearest radar object per neighbour lane, 0 = none
+    self.radar_objects_available = radar_objects_available(CP)
+
+  @staticmethod
+  def parse_neighbour_leads(radar_values) -> tuple[float, float]:
+    # Nearest radar object in each neighbour lane, for the cluster's side lane car icons.
+    # The radar already sorts its objects into same/left/right lane, so only pick the closest per side.
+    if not len(radar_values) or radar_values["Distance_Status"] != 0:  # 0 = Valid
+      return 0.0, 0.0
+
+    out = []
+    for lane in ("Left_Lane", "Right_Lane"):
+      distances = [radar_values[f"{lane}_0{idx}_Long_Distance"] for idx in (1, 2)
+                   if radar_values[f"{lane}_0{idx}_ObjectID"] != 0]
+      distances = [d for d in distances if 0 < d <= MAX_LEAD_DISTANCE]
+      out.append(min(distances) if distances else 0.0)
+
+    return out[0], out[1]
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -345,6 +374,12 @@ class CarState(CarStateBase, MadsCarState):
     # and capture it for forwarding to the blind spot radar controller
     self.ldw_stock_values = cam_cp.vl["LDW_02"]
 
+    # Radar objects in the neighbour lanes, shown as side cars on the cluster
+    if self.radar_objects_available:
+      self.neighbour_lead_distance = self.parse_neighbour_leads(ext_cp.vl["Strukturen_01"])
+    else:
+      self.neighbour_lead_distance = (0.0, 0.0)
+
     ret.stockFcw = bool(ext_cp.vl["AWV_03"]["FCW_Active"]) if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) else False # currently most plausible candidate
     ret.stockAeb = bool(ext_cp.vl["AWV_03"]["AEB_Active"]) if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) else False
 
@@ -640,6 +675,9 @@ class CarState(CarStateBase, MadsCarState):
     if CP.networkLocation == NetworkLocation.gateway:
       if not (CP.flags & VolkswagenFlags.DISABLE_RADAR):
         cam_messages.append(("AWV_03", 1)) # Front Collision Detection (1 Hz when inactive, 50 Hz when active)
+        if radar_objects_available(CP):
+          # frequency check disabled on purpose: a quiet radar must not invalidate the whole parser
+          cam_messages.append(("Strukturen_01", 0)) # Radar objects, for the cluster's neighbour lane cars
       
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),

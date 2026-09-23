@@ -306,7 +306,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit,
-                                                         bool(self.CP.flags & VolkswagenFlags.MQB_EVO), self.frame // self.CCP.ACC_HUD_STEP))
+                                                         bool(self.CP.flags & VolkswagenFlags.MQB_EVO), self.frame // self.CCP.ACC_HUD_STEP,
+                                                         CS.neighbour_lead_distance))
 
       else:
         lead_distance = 0

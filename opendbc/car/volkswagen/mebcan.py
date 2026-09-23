@@ -110,6 +110,7 @@ def create_lka_hud_control(packer, bus, CP, ldw_stock_values, lat_active, steeri
     "LDW_Lernmodus_rechts": 3 + display_mode if hud_control.rightLaneDepart else 1 + hud_control.rightLaneVisible + display_mode,
     "LDW_Texte": hud_alert,
   })
+
   return packer.make_can_msg("LDW_02", bus, values)
 
 
@@ -441,8 +442,13 @@ def get_acc_hud_display_prio(acc_control, fcw_alert):
   return 1
 
 
+
+
 def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
-                           mqb_evo=False, hud_counter=0):
+                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.)):
+  # Cars in the neighbour lanes are only drawn while the ACC display is live
+  hud_live = acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
+  lead_left, lead_right = neighbour_lead_distance if hud_live else (0., 0.)
 
   values = {
     "ACC_Status_ACC":                acc_control,
@@ -458,6 +464,8 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
     "Lead_Type":                     3 if lead_visible else 0, # displaying a car
     "Lead_Distance":                 distance if lead_visible else 0, # hud distance of object
+    "Lead_Distance_Right":           lead_right, # nearest radar object in the right lane, 0 = none
+    "Lead_Distance_Left":            lead_left,  # nearest radar object in the left lane, 0 = none
     "ACC_Enabled":                   1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0,
     "ACC_Standby_Override":          1 if acc_control != ACC_HUD_ACTIVE else 0,
     "Street_Color":                  1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # light grey (1) or dark (0) street
