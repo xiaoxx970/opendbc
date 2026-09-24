@@ -447,7 +447,6 @@ def get_acc_hud_display_prio(acc_control, fcw_alert):
   return 1
 
 
-
 # --- cluster HUD experiment (temporary, parked testing only) -----------------
 # Reads /data/cluster_hud_test.json (reloaded when it changes) and overrides
 # display-only signals in ACC_19. No effect on control. Delete the file to stop.
@@ -462,6 +461,7 @@ _HUD_TEST_ALLOWED = (
   "ACA_Querfuehrung", "STA_Primaeranz", "ACC_Abstandsindex_02",
   "Street_Color", "ACC_EGO_Fahrzeug",
 )
+_PSD_TEST_ALLOWED = ("PSD_Test", "PSD_Lanes", "PSD_Lane", "PSD_Category")
 _LDW_TEST_ALLOWED = (
   "LDW_Lernmodus", "LDW_Lernmodus_links", "LDW_Lernmodus_rechts",
   "LDW_Texte", "LDW_Status_LED_gruen", "LDW_Status_LED_gelb",
@@ -488,13 +488,64 @@ def _hud_test_overrides():
     try:
       with open(_HUD_TEST_PATH) as f:
         data = json.load(f)
-      allowed = _HUD_TEST_ALLOWED + _LDW_TEST_ALLOWED
+      allowed = _HUD_TEST_ALLOWED + _LDW_TEST_ALLOWED + _PSD_TEST_ALLOWED
       _hud_test_state["values"] = {k: v for k, v in data.items()
                                    if k in allowed and isinstance(v, (int, float)) and not isinstance(v, bool)}
     except Exception:
       _hud_test_state["values"] = {}
 
   return _hud_test_state["values"]
+
+
+# Fake predictive street data (normally sent by a navigation head unit) describing one
+# endless road segment, to find out whether the camera/cluster draw neighbour lanes from
+# the map lane count. Speed limit, curvature and slope fields stay empty on purpose.
+PSD_TEST_SEGMENT_ID = 10
+
+
+def create_psd_test_messages(packer, bus):
+  cfg = _hud_test_overrides()
+  if cfg.get("PSD_Test") != 1:
+    return []
+
+  lanes = int(cfg.get("PSD_Lanes", 3))
+  lane = int(cfg.get("PSD_Lane", 0))
+  category = int(cfg.get("PSD_Category", 5))  # 5 = Autobahn
+
+  psd_04 = {
+    "PSD_Segment_ID":             PSD_TEST_SEGMENT_ID,
+    "PSD_Vorgaenger_Segment_ID":  0,    # no predecessor
+    "PSD_Segmentlaenge":          254,  # max, m
+    "PSD_Strassenkategorie":      category,
+    "PSD_Endkruemmung":           255,  # straight
+    "PSD_Idenditaets_ID":         PSD_TEST_SEGMENT_ID,
+    "PSD_ADAS_Qualitaet":         1,
+    "PSD_wahrscheinlichster_Pfad": 1,
+    "PSD_Geradester_Pfad":        1,
+    "PSD_Fahrspuren_Anzahl":      lanes,
+    "PSD_Bebauung":               0,
+    "PSD_Segment_Komplett":       1,
+    "PSD_Rampe":                  3,    # one-way carriageway, as seen on the motorway in stock logs
+    "PSD_Anfangskruemmung":       255,  # straight
+  }
+  psd_05 = {
+    "PSD_Pos_Segment_ID":            PSD_TEST_SEGMENT_ID,
+    "PSD_Pos_Segmentlaenge":         20,
+    "PSD_Pos_Inhibitzeit":           120,
+    "PSD_Pos_Standort_Eindeutig":    1,
+    "PSD_Pos_Fehler_Laengsrichtung": 1,
+    "PSD_Pos_Fahrspur":              lane,
+    "PSD_Attribute_Komplett_05":     1,
+  }
+  psd_06 = {
+    "PSD_06_Mux": 0,  # system info, all zero as sent by a stock head unit
+  }
+
+  return [
+    packer.make_can_msg("PSD_04", bus, psd_04),
+    packer.make_can_msg("PSD_05", bus, psd_05),
+    packer.make_can_msg("PSD_06", bus, psd_06),
+  ]
 # --- end cluster HUD experiment ---------------------------------------------
 
 def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,

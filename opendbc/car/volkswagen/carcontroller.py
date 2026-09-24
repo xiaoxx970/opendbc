@@ -243,6 +243,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         if self.frame % 4 == 0:
           can_sends.append(self.CCS.create_radar_objects(self.packer_pt, self.CAN.pt)) # Radar Objects (25 Hz)
 
+    # Temporary cluster experiment: fake navigation street data towards the camera side (~6.7 Hz like stock)
+    if self.CP.openpilotLongitudinalControl and self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) and self.frame % 15 == 0:
+      can_sends.extend(self.CCS.create_psd_test_messages(self.packer_pt, self.CAN.cam))
+
     # **** HUD Controls ***************************************************** #
 
     if self.frame % self.CCP.LDW_STEP == 0:
