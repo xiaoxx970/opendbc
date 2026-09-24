@@ -38,6 +38,10 @@ MSG_MOTOR_14   = 0x3BE
 # sunnypilot: EA messages for AEB mitigation, MSG_MEB_ACC_01 alias for ACC_19
 MSG_EA_01      = 0x1A4
 MSG_EA_02      = 0x1F0
+# predictive street data, sent towards the ADAS side for the cluster lane display
+MSG_PSD_04     = 0x462
+MSG_PSD_05     = 0x463
+MSG_PSD_06     = 0x464
 MSG_MEB_ACC_01 = MSG_ACC_19
 
 
@@ -335,7 +339,8 @@ class TestVolkswagenMqbEvoStockSafety(TestVolkswagenMebStockSafety):
 class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
   TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0],
              [MSG_MEB_ACC_01, 0], [MSG_ACC_18, 0], [MSG_TA_01, 0],
-             [MSG_EA_01, 0], [MSG_EA_02, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
+             [MSG_EA_01, 0], [MSG_EA_02, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2],
+             [MSG_PSD_04, 2], [MSG_PSD_05, 2], [MSG_PSD_06, 2]]
   FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01],
                            2: [MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_MEB_ACC_01, MSG_ACC_18, MSG_TA_01]}
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_TA_01, MSG_MEB_ACC_01, MSG_ACC_18),

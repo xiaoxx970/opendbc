@@ -21,6 +21,9 @@
 #define MSG_AWV_03           0xDBU    // TX, radar AEB control message replacement
 #define MSG_MEB_AWV_01       0x16A954ADU   // TX, radar AEB HUD message replacement
 #define MSG_MEB_DISTANCE_01  0x24FU   // TX, radar objects message replacement
+#define MSG_PSD_04           0x462U   // TX, predictive street data: road segment (lane count), for the cluster
+#define MSG_PSD_05           0x463U   // TX, predictive street data: position on segment
+#define MSG_PSD_06           0x464U   // TX, predictive street data: system info
 
 // ACC_18.ACC_Anforderung_HMS states openpilot may request.
 #define VOLKSWAGEN_MEB_HMS_KEINE_ANFORDERUNG   0U
@@ -57,6 +60,8 @@
   {MSG_EA_01, 0, 8, .check_relay = false}, {MSG_EA_02, 0, 8, .check_relay = true},     \
   {MSG_KLR_01, 0, 8, .check_relay = false}, {MSG_KLR_01, 2, 8, .check_relay = true},   \
   {MSG_LDW_02, 0, 8, .check_relay = true}, {MSG_TA_01, 0, 8, .check_relay = true},     \
+  {MSG_PSD_04, 2, 8, .check_relay = false}, {MSG_PSD_05, 2, 8, .check_relay = false},  \
+  {MSG_PSD_06, 2, 8, .check_relay = false},                                            \
 
 #define VW_MEB_RADAR_TX_MSGS                        \
   {MSG_AWV_03, 0, 48, .check_relay = true},         \
