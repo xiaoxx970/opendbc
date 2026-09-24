@@ -318,6 +318,14 @@ struct RadarData @0x888ad6581cf0aacb {
     dRel @1 :Float32;    # m from the front bumper of the car
     yRel @2 :Float32;    # m
     vRel @3 :Float32;    # m/s
+    laneAssignment @7 :LaneAssignment;  # lane the radar itself assigns the object to, if it reports one
+
+    enum LaneAssignment {
+      unknown @0;
+      same @1;
+      left @2;
+      right @3;
+    }
 
     deprecated :group {
       aRel @4 :Float32; # m/s^2

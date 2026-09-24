@@ -15,9 +15,14 @@ RADAR_ADDR = 0x24F
 NO_OBJECT_ID = 0
 DISTANCE_STATUS_VALID = 0
 RADAR_UNAVAILABLE_THRESH = 5
-LANE_TYPES = ("Same_Lane", "Left_Lane", "Right_Lane")
+LANE_TYPES = {
+  "Same_Lane": structs.RadarData.RadarPoint.LaneAssignment.same,
+  "Left_Lane": structs.RadarData.RadarPoint.LaneAssignment.left,
+  "Right_Lane": structs.RadarData.RadarPoint.LaneAssignment.right,
+}
 SIGNAL_SETS = tuple(
   (
+    lane,
     f"{prefix}_ObjectID",
     f"{prefix}_Long_Distance",
     f"{prefix}_Lat_Distance",
@@ -97,8 +102,8 @@ class RadarInterface(RadarInterfaceBase):
       ret.errors.radarUnavailableTemporary = True
       return ret
 
-    active_objects: dict[int, tuple[float, float, float]] = {}
-    for obj_id_sig, long_sig, lat_sig, vel_sig in SIGNAL_SETS:
+    active_objects: dict[int, tuple[float, float, float, str]] = {}
+    for lane, obj_id_sig, long_sig, lat_sig, vel_sig in SIGNAL_SETS:
       obj_id = get(obj_id_sig)
       if obj_id == NO_OBJECT_ID:
         continue
@@ -111,9 +116,10 @@ class RadarInterface(RadarInterfaceBase):
         get(long_sig),  # dRel
         get(lat_sig),   # yRel
         get(vel_sig),   # vRel
+        lane,
       )
 
-    for obj_id, (d_rel, y_rel, v_rel) in active_objects.items():
+    for obj_id, (d_rel, y_rel, v_rel, lane) in active_objects.items():
       if obj_id not in self._pts:
         pt = structs.RadarData.RadarPoint()
         pt.trackId = self._track_id_counter
@@ -125,6 +131,8 @@ class RadarInterface(RadarInterfaceBase):
       pt.dRel = d_rel - DREL_FRONT_EDGE_MARGIN
       pt.yRel = y_rel
       pt.vRel = v_rel
+      # the radar moves an object between lane slots as it changes lanes, so refresh this every frame
+      pt.laneAssignment = LANE_TYPES[lane]
 
     inactive_ids = self._pts.keys() - active_objects.keys()
     for obj_id in inactive_ids:
