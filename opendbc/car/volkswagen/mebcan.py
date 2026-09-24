@@ -400,15 +400,21 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
   return commands
 
 
+# ACC_Events curve icons, verified on a Golf 8 cluster: 6 = S-bend, 7 = right curve, 8 = left curve
+ACC_EVENT_CURVE_S_BEND = 6
+ACC_EVENT_CURVE_BY_DIRECTION = {-1: 8, 1: 7, 2: ACC_EVENT_CURVE_S_BEND}  # hudCurveDirection -> event
+
+
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
-                      curve_speed=False, speed_limit_ahead=False):
+                      curve_speed=False, speed_limit_ahead=False, curve_direction=0):
   acc_event = 0
   hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
 
   if esp_hold and acc_hud_control == ACC_HUD_ACTIVE:
     acc_event = 3 # acc ready message at standstill
   elif hud_on and curve_speed:
-    acc_event = 6 # acc limited by curve (openpilot vision curve control)
+    # acc limited by curve (openpilot vision curve control), icon follows the direction of the turn
+    acc_event = ACC_EVENT_CURVE_BY_DIRECTION.get(curve_direction, ACC_EVENT_CURVE_S_BEND)
   elif hud_on and speed_limit_predicative:
     if speed_limit_predicative_type == PSD_TYPE_CURV_SPEED:
       acc_event = 6 # acc limited by curve (predicative, car map data)

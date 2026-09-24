@@ -204,6 +204,7 @@ class CarControlIC:
   hudSpeedLimitFromMap: bool = auto_field()  # hudSpeedLimit comes from map data (nav), not the car camera
   hudSpeedLimitAhead: bool = auto_field()  # hudSpeedLimit is an upcoming (not yet reached) limit
   hudCurveSpeed: float = auto_field()  # m/s, vision curve target speed while slowing for a curve, 0 = none
+  hudCurveDirection: int = auto_field()  # direction of that curve: 0 = none, -1 = left, 1 = right, 2 = S-bend
 
 
 @auto_dataclass
