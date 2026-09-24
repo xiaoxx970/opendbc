@@ -13,6 +13,7 @@ ButtonType = structs.CarState.ButtonEvent.Type
 
 
 MAX_LEAD_DISTANCE = 150  # ACC_19 Lead_Distance* signal range in m
+NEIGHBOUR_MIN_LAT_OFFSET = 1.0  # m, side objects closer to our axis are not drawn as side cars
 
 
 def radar_objects_available(CP) -> bool:
@@ -60,9 +61,16 @@ class CarState(CarStateBase, MadsCarState):
       return 0.0, 0.0
 
     out = []
-    for lane in ("Left_Lane", "Right_Lane"):
-      distances = [radar_values[f"{lane}_0{idx}_Long_Distance"] for idx in (1, 2)
-                   if radar_values[f"{lane}_0{idx}_ObjectID"] != 0]
+    for lane, toward_ego in (("Left_Lane", -1), ("Right_Lane", 1)):
+      distances = []
+      for idx in (1, 2):
+        if radar_values[f"{lane}_0{idx}_ObjectID"] == 0:
+          continue
+        # lateral distance is positive to the left: a side object this close to our axis is already
+        # cutting in and is shown as the lead, the radar just has not re-assigned its lane yet
+        if radar_values[f"{lane}_0{idx}_Lat_Distance"] * toward_ego > -NEIGHBOUR_MIN_LAT_OFFSET:
+          continue
+        distances.append(radar_values[f"{lane}_0{idx}_Long_Distance"])
       distances = [d for d in distances if 0 < d <= MAX_LEAD_DISTANCE]
       out.append(min(distances) if distances else 0.0)
 
