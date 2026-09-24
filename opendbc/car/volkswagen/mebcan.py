@@ -92,8 +92,22 @@ def create_blinker_control(packer, bus, ea_hud_stock_values, ea_control_stock_va
   return packer.make_can_msg("EA_02", bus, values)
 
 
+# LDW_Lernmodus_links/rechts (2 bit), verified on a Golf 8 cluster: 0 and 1 draw no line,
+# 2 a grey line, 3 a white (active) line. Each side is independent.
+LDW_LINE_NONE = 1
+LDW_LINE_PASSIVE = 2
+LDW_LINE_ACTIVE = 3
+
+
+def get_lane_line_display(visible, depart, active_style):
+  if not (visible or depart):
+    return LDW_LINE_NONE
+  # a line being crossed is always drawn, highlighted even while openpilot is not steering
+  return LDW_LINE_ACTIVE if active_style or depart else LDW_LINE_PASSIVE
+
+
 def create_lka_hud_control(packer, bus, CP, ldw_stock_values, lat_active, steering_pressed, hud_alert, hud_control, sound_alert):
-  display_mode = 1 if lat_active and not (CP.flags & VolkswagenFlags.CLUSTER_NO_TA_LANES) else 0 # travel assist style showing yellow lanes when op is active
+  active_style = lat_active and not (CP.flags & VolkswagenFlags.CLUSTER_NO_TA_LANES) # travel assist style lanes when op is active
   
   values = {}
   if len(ldw_stock_values):
@@ -109,8 +123,8 @@ def create_lka_hud_control(packer, bus, CP, ldw_stock_values, lat_active, steeri
     "LDW_Gong": sound_alert,
     "LDW_Status_LED_gelb": 1 if lat_active and steering_pressed else 0,
     "LDW_Status_LED_gruen": 1 if lat_active and not steering_pressed else 0,
-    "LDW_Lernmodus_links": 3 + display_mode if hud_control.leftLaneDepart else 1 + hud_control.leftLaneVisible + display_mode,
-    "LDW_Lernmodus_rechts": 3 + display_mode if hud_control.rightLaneDepart else 1 + hud_control.rightLaneVisible + display_mode,
+    "LDW_Lernmodus_links": get_lane_line_display(hud_control.leftLaneVisible, hud_control.leftLaneDepart, active_style),
+    "LDW_Lernmodus_rechts": get_lane_line_display(hud_control.rightLaneVisible, hud_control.rightLaneDepart, active_style),
     "LDW_Texte": hud_alert,
   })
 
