@@ -394,18 +394,30 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
   return commands
 
 
-def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit):
+# ACC_Events curve icons, verified on a Golf 8 cluster: 6 = S-bend, 7 = right curve, 8 = left curve
+ACC_EVENT_CURVE_S_BEND = 6
+ACC_EVENT_CURVE_BY_DIRECTION = {-1: 8, 1: 7, 2: ACC_EVENT_CURVE_S_BEND}  # hudCurveDirection -> event
+
+
+def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
+                      curve_speed=False, speed_limit_ahead=False, curve_direction=0):
   acc_event = 0
-  
+  hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
+
   if esp_hold and acc_hud_control == ACC_HUD_ACTIVE:
     acc_event = 3 # acc ready message at standstill
-  elif acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) and speed_limit_predicative:
+  elif hud_on and curve_speed:
+    # acc limited by curve (openpilot vision curve control), icon follows the direction of the turn
+    acc_event = ACC_EVENT_CURVE_BY_DIRECTION.get(curve_direction, ACC_EVENT_CURVE_S_BEND)
+  elif hud_on and speed_limit_predicative:
     if speed_limit_predicative_type == PSD_TYPE_CURV_SPEED:
-      acc_event = 6 # acc limited by curve (predicative)
+      acc_event = 6 # acc limited by curve (predicative, car map data)
     else:
-      acc_event = 4 # acc limited by speed limit by nav (predicative)
-  elif acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) and speed_limit:
-    acc_event = 5 # acc limited by speed limit by camera (recently detected)
+      acc_event = 4 # acc limited by speed limit by nav (predicative, car map data)
+  elif hud_on and speed_limit_ahead:
+    acc_event = 4 # upcoming speed limit from openpilot map data
+  elif hud_on and speed_limit:
+    acc_event = 5 # acc limited by speed limit (camera or map, recently detected)
 
   return acc_event
   
@@ -420,18 +432,34 @@ def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
   return gap
 
 
-def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit):
+# ACC_19 "Heartbeat" as sent by the stock MQBevo radar: a fixed 8 message pattern of two values (never 0)
+ACC_HUD_HEARTBEAT_PATTERN = (420, 261, 261, 420, 261, 420, 420, 261)
+
+
+def get_acc_hud_display_prio(acc_control, fcw_alert):
+  # stock MQBevo radar: 0 = highest (warning), 1 = disabled/override, 2 = active, 3 = standby (no prio)
+  if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+    return 0
+  if acc_control == ACC_HUD_ACTIVE:
+    return 2
+  if acc_control == ACC_HUD_ENABLED:
+    return 3
+  return 1
+
+
+def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
+                           mqb_evo=False, hud_counter=0):
 
   values = {
     "ACC_Status_ACC":                acc_control,
     "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
-    "ACC_Display_Prio":              0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1, # probably keeping warning in front
+    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
     "ACC_Optischer_Fahrerhinweis":   1 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables optical warning
     "ACC_Akustischer_Fahrerhinweis": 3 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables sound warning
     "ACC_Texte_Zusatzanz_02":        11 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # type of warning: Break!
-    "ACC_Abstandsindex_02":          569, # seems to be default for MEB but is not static in every case
+    "ACC_Abstandsindex_02":          0 if mqb_evo else 569, # MQBevo stock radar sends 0; seems to be default for MEB but is not static in every case
     "ACC_EGO_Fahrzeug":              2 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else (1 if acc_control == ACC_HUD_ACTIVE else 0), # red car warn symbol for fcw
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
     "Lead_Type":                     3 if lead_visible else 0, # displaying a car
@@ -441,15 +469,16 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Street_Color":                  1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # light grey (1) or dark (0) street
     "Lead_Brightness":               3 if acc_control == ACC_HUD_ACTIVE else 0, # object shows in colour
     "ACC_Events":                    acc_event, # e.g. pACC Events
-    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH, # this speed is shown for curve event speeds, not for speed signs (speed signs in "ACC_Tempolimit")
+    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH if acc_event == 6 else 327.36, # curve event speed only; 327.36 (raw 1023) = None, same as stock radar. any other value makes the cluster assume pACC is present
     "Zeitluecke_1":                  get_desired_gap(distance_bars, desired_gap, 1), # desired distance to lead object for distance bar 1
     "Zeitluecke_2":                  get_desired_gap(distance_bars, desired_gap, 2), # desired distance to lead object for distance bar 2
     "Zeitluecke_3":                  get_desired_gap(distance_bars, desired_gap, 3), # desired distance to lead object for distance bar 3
     "Zeitluecke_4":                  get_desired_gap(distance_bars, desired_gap, 4), # desired distance to lead object for distance bar 4
     "Zeitluecke_5":                  get_desired_gap(distance_bars, desired_gap, 5), # desired distance to lead object for distance bar 5
-    "Zeitluecke_Farbe":              1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # yellow (1) or white (0) time gap
+    "Zeitluecke_Farbe":              0 if mqb_evo else (1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0), # yellow (1) or white (0) time gap, MQBevo stock radar always sends 0
     "ACC_Anzeige_Zeitluecke":        show_distance_bars if acc_control != ACC_HUD_DISABLED else 0, # show distance bar selection
     "SET_ME_0X1":                    0x1,    # unknown
+    "Heartbeat":                     ACC_HUD_HEARTBEAT_PATTERN[hud_counter % len(ACC_HUD_HEARTBEAT_PATTERN)] if mqb_evo else 0, # stock radar never sends 0 here
     "SET_ME_0X6A":                   0x6A,   # unknown
     "SET_ME_0XFFFF":                 0xFFFF, # unknown
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
