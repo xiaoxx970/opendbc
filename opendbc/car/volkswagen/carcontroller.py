@@ -12,7 +12,13 @@ from opendbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit
 from opendbc.sunnypilot.car.volkswagen.icbm import IntelligentCruiseButtonManagementInterface
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
+ButtonType = structs.CarState.ButtonEvent.Type
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
+# Stock VW hides the distance popup 2 s after the last button is released. Keep in step with
+# openpilot's selfdrive/car/distance_display.py, which decides what those presses do.
+DISTANCE_POPUP_FRAMES = 200
+DISTANCE_STEP_BUTTONS = (ButtonType.accelCruise, ButtonType.decelCruise)
 
 
 class HCAMitigation:
@@ -66,7 +72,9 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
     self.lead_distance_bars_last = None
-    self.distance_bar_frame = -400  # do not show the distance bar selection popup right after boot
+    self.distance_buttons = set()  # distance and +/- presses that belong to the distance popup, until released
+    self.distance_button_frame = -DISTANCE_POPUP_FRAMES  # last release of one of them
+    self.distance_bar_frame = -DISTANCE_POPUP_FRAMES  # last change of the distance
     self.speed_limit_last = 0
     self.speed_limit_changed_timer = -400  # never treat boot as a freshly detected speed limit
     self.radar_disabled_warning_timer = 0
@@ -258,13 +266,29 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
                                                          CS.out.steeringPressed, hud_alert, hud_control))
 
-    if hud_control.leadDistanceBars != self.lead_distance_bars_last:
+    # Distance popup like stock VW: a distance press shows it, +/- pressed while it is shown adjust
+    # the distance instead of the set speed, and it closes 2 s after the last of those is released
+    if CS.out.cruiseState.available:
+      for b in CS.out.buttonEvents:
+        showing = bool(self.distance_buttons) or self.frame - self.distance_button_frame < DISTANCE_POPUP_FRAMES
+        if b.pressed and (b.type == ButtonType.gapAdjustCruise or (b.type in DISTANCE_STEP_BUTTONS and showing)):
+          self.distance_buttons.add(b.type)
+        elif not b.pressed and b.type in self.distance_buttons:
+          self.distance_buttons.discard(b.type)
+          self.distance_button_frame = self.frame
+    else:
+      self.distance_buttons.clear()
+      self.distance_button_frame = -DISTANCE_POPUP_FRAMES
+
+    # also show a change made elsewhere, but not on the first frame after boot
+    if self.lead_distance_bars_last is not None and hud_control.leadDistanceBars != self.lead_distance_bars_last:
       self.distance_bar_frame = self.frame
-    
+
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out_ic.radarDisableFailed:
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
         fcw_alert = hud_control.visualAlert == VisualAlert.fcw
-        show_distance_bars = self.frame - self.distance_bar_frame < 400
+        show_distance_bars = bool(self.distance_buttons) or self.frame - self.distance_button_frame < DISTANCE_POPUP_FRAMES or \
+                             self.frame - self.distance_bar_frame < DISTANCE_POPUP_FRAMES
         gap = max(8, CS.out.vEgo * CC_IC.hudLeadFollowTime)
         distance = max(8, CC_IC.hudLeadDistance) if CC_IC.hudLeadDistance != 0 else 0
 
