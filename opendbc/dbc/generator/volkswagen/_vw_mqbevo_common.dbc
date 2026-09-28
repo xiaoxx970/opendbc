@@ -664,7 +664,8 @@ BO_ 768 ACC_19: 48 XXX
  SG_ ACC_Limiter_Mode : 268|1@0+ (1,0) [0|1] "" XXX
  SG_ Lead_Brightness : 269|4@1+ (1,0) [0|7] "" XXX
  SG_ SET_ME_0X6A : 273|8@1+ (1,0) [0|7] "" XXX
- SG_ Lead_Position : 281|2@1+ (1,0) [0|1] "" XXX
+ SG_ Lead_Type_Left : 281|3@1+ (1,0) [0|7] "" XXX
+ SG_ Lead_Type_Right : 284|3@1+ (1,0) [0|7] "" XXX
  SG_ Lead_Type : 287|3@1+ (1,0) [0|3] "" XXX
  SG_ Lead_Distance : 290|10@1+ (0.17,0) [0|150] "Unit_Meter" XXX
  SG_ Lead_Distance_Right : 300|10@1+ (0.17,0) [0|150] "Unit_Meter" XXX
