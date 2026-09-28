@@ -5,6 +5,7 @@ from opendbc.car import Bus, structs
 from opendbc.car.volkswagen.mebutils import map_speed_to_acc_tempolimit
 from opendbc.car.volkswagen.values import DBC, VolkswagenFlags
 from opendbc.car.volkswagen.speed_limit_manager import PSD_TYPE_CURV_SPEED
+from opendbc.car.volkswagen.vision_car_types import vision_car_types
 from opendbc.car.common.conversions import Conversions as CV
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -470,6 +471,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
   # is the lead itself cutting in before the radar re-assigns its lane: draw it only once.
   lead_left, lead_right = (d if not (lead_visible and abs(d - distance) < SIDE_LEAD_DEDUP_DISTANCE) else 0.
                            for d in neighbour_lead_distance)
+  lead_type, left_type, right_type = vision_car_types.get()
 
   values = {
     "ACC_Status_ACC":                acc_control,
@@ -483,7 +485,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "ACC_Abstandsindex_02":          0 if mqb_evo else 569, # MQBevo stock radar sends 0; seems to be default for MEB but is not static in every case
     "ACC_EGO_Fahrzeug":              2 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else (1 if acc_control == ACC_HUD_ACTIVE else 0), # red car warn symbol for fcw
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
-    "Lead_Type":                     3 if lead_visible else 0, # displaying a car
+    "Lead_Type":                     lead_type if lead_visible else 0, # car unless yolo_leadd says otherwise
     "Lead_Distance":                 distance if lead_visible else 0, # hud distance of object
     "Lead_Distance_Right":           lead_right, # nearest radar object in the right lane, 0 = none
     "Lead_Distance_Left":            lead_left,  # nearest radar object in the left lane, 0 = none
@@ -506,6 +508,11 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "SET_ME_0XFFFF":                 0xFFFF, # unknown
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
   }
+
+  # side car types exist only in DBCs that define them (not the first MEB generation)
+  if "Lead_Type_Left" in packer.dbc.name_to_msg["ACC_19"].sigs:
+    values["Lead_Type_Left"] = left_type
+    values["Lead_Type_Right"] = right_type
 
   return packer.make_can_msg("ACC_19", bus, values)
 
