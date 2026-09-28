@@ -124,6 +124,7 @@ def create_lka_hud_control(packer, bus, CP, ldw_stock_values, lat_active, steeri
     "LDW_Lernmodus_rechts": get_lane_line_display(hud_control.rightLaneVisible, hud_control.rightLaneDepart, active_style),
     "LDW_Texte": hud_alert,
   })
+
   return packer.make_can_msg("LDW_02", bus, values)
 
 
@@ -411,6 +412,8 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
 # ACC_Events curve icons, verified on a Golf 8 cluster: 6 = S-bend, 7 = right curve, 8 = left curve
 ACC_EVENT_CURVE_S_BEND = 6
 ACC_EVENT_CURVE_BY_DIRECTION = {-1: 8, 1: 7, 2: ACC_EVENT_CURVE_S_BEND}  # hudCurveDirection -> event
+ACC_EVENTS_CURVE = (6, 7, 8)  # all three show ACC_Event_Wunschgeschw as the curve speed
+SIDE_LEAD_DEDUP_DISTANCE = 5.  # m
 
 
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
@@ -462,7 +465,11 @@ def get_acc_hud_display_prio(acc_control, fcw_alert):
 
 
 def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
-                           mqb_evo=False, hud_counter=0):
+                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.)):
+  # Side lane cars are drawn like the lead car, in every ACC state. A side car at the lead's distance
+  # is the lead itself cutting in before the radar re-assigns its lane: draw it only once.
+  lead_left, lead_right = (d if not (lead_visible and abs(d - distance) < SIDE_LEAD_DEDUP_DISTANCE) else 0.
+                           for d in neighbour_lead_distance)
 
   values = {
     "ACC_Status_ACC":                acc_control,
@@ -483,7 +490,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Street_Color":                  1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # light grey (1) or dark (0) street
     "Lead_Brightness":               3 if acc_control == ACC_HUD_ACTIVE else 0, # object shows in colour
     "ACC_Events":                    acc_event, # e.g. pACC Events
-    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH if acc_event == 6 else 327.36, # curve event speed only; 327.36 (raw 1023) = None, same as stock radar. any other value makes the cluster assume pACC is present
+    "ACC_Event_Wunschgeschw":        speed_limit * CV.MS_TO_KPH if acc_event in ACC_EVENTS_CURVE else 327.36, # curve event speed only; 327.36 (raw 1023) = None, same as stock radar. any other value makes the cluster assume pACC is present
     "Zeitluecke_1":                  get_desired_gap(distance_bars, desired_gap, 1), # desired distance to lead object for distance bar 1
     "Zeitluecke_2":                  get_desired_gap(distance_bars, desired_gap, 2), # desired distance to lead object for distance bar 2
     "Zeitluecke_3":                  get_desired_gap(distance_bars, desired_gap, 3), # desired distance to lead object for distance bar 3
@@ -497,6 +504,13 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "SET_ME_0XFFFF":                 0xFFFF, # unknown
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
   }
+
+  # side cars exist only in DBCs that define them (not the first MEB generation, which would log
+  # an unknown signal for every frame)
+  acc_19_sigs = packer.dbc.name_to_msg["ACC_19"].sigs
+  if "Lead_Distance_Left" in acc_19_sigs:
+    values["Lead_Distance_Right"] = lead_right  # nearest radar object in the right lane, 0 = none
+    values["Lead_Distance_Left"] = lead_left    # nearest radar object in the left lane, 0 = none
 
   return packer.make_can_msg("ACC_19", bus, values)
 
