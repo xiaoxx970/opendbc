@@ -487,8 +487,6 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Lead_Type_Detected":            1 if lead_visible else 0, # object should be displayed
     "Lead_Type":                     lead_type if lead_visible else 0, # car unless yolo_leadd says otherwise
     "Lead_Distance":                 distance if lead_visible else 0, # hud distance of object
-    "Lead_Distance_Right":           lead_right, # nearest radar object in the right lane, 0 = none
-    "Lead_Distance_Left":            lead_left,  # nearest radar object in the left lane, 0 = none
     "ACC_Enabled":                   1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0,
     "ACC_Standby_Override":          1 if acc_control != ACC_HUD_ACTIVE else 0,
     "Street_Color":                  1 if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # light grey (1) or dark (0) street
@@ -509,8 +507,13 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
   }
 
-  # side car types exist only in DBCs that define them (not the first MEB generation)
-  if "Lead_Type_Left" in packer.dbc.name_to_msg["ACC_19"].sigs:
+  # side cars exist only in DBCs that define them (not the first MEB generation, which would log
+  # an unknown signal for every frame)
+  acc_19_sigs = packer.dbc.name_to_msg["ACC_19"].sigs
+  if "Lead_Distance_Left" in acc_19_sigs:
+    values["Lead_Distance_Right"] = lead_right  # nearest radar object in the right lane, 0 = none
+    values["Lead_Distance_Left"] = lead_left    # nearest radar object in the left lane, 0 = none
+  if "Lead_Type_Left" in acc_19_sigs:
     values["Lead_Type_Left"] = left_type
     values["Lead_Type_Right"] = right_type
 
