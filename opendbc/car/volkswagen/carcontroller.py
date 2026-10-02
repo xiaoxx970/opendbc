@@ -51,6 +51,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.CAN = CanBus(CP)
     self.packer_pt = CANPacker(dbc_names[Bus.pt])
     self.aeb_available = not CP.flags & VolkswagenFlags.PQ
+    # On the gateway the camera is left in place: while openpilot is not steering it stays off HCA_03 and LDW_02,
+    # and panda forwards the camera's instead, so stock Lane Assist and Side Assist keep working
+    self.stock_lane_assist = bool(CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO)) and \
+                             CP.networkLocation == structs.CarParams.NetworkLocation.gateway
 
     if CP.flags & VolkswagenFlags.PQ:
       self.CCS = pqcan
@@ -125,7 +129,9 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
             apply_curvature = 0. # inactive curvature
             steering_power = 0
 
-        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        if hca_enabled or not self.stock_lane_assist:
+          can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        CS.op_steering_requested = hca_enabled or not self.stock_lane_assist
         self.apply_curvature_last = apply_curvature
         self.steering_power_last = steering_power
         
@@ -258,10 +264,13 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
 
+      # a take-over alert still goes out after openpilot stopped steering
+      stock_ldw = self.stock_lane_assist and not CC.latActive and hud_alert == 0
       if self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO):
-        sound_alert = self.CCP.LDW_SOUNDS["Chime"] if hud_alert == self.CCP.LDW_MESSAGES["laneAssistTakeOver"] and not CC_IC.disableCarSteerAlerts else self.CCP.LDW_SOUNDS["None"]
-        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, self.CP, CS.ldw_stock_values, CC.latActive,
-                                                         CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
+        if not stock_ldw:
+          sound_alert = self.CCP.LDW_SOUNDS["Chime"] if hud_alert == self.CCP.LDW_MESSAGES["laneAssistTakeOver"] and not CC_IC.disableCarSteerAlerts else self.CCP.LDW_SOUNDS["None"]
+          can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, self.CP, CS.ldw_stock_values, CC.latActive,
+                                                           CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
       else:
         can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
                                                          CS.out.steeringPressed, hud_alert, hud_control))

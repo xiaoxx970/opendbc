@@ -35,6 +35,17 @@
 #define VOLKSWAGEN_MEB_ACC_AKTIV_REGELT  3U
 #define VOLKSWAGEN_MEB_ACC_OVERRIDE      4U
 
+// The camera's HCA_03 and LDW_02 are forwarded to the car only while openpilot is not sending its own,
+// so that stock Lane Assist and Side Assist keep steering and drawing lanes when openpilot is not steering.
+// openpilot sends HCA_03 every 20 ms and LDW_02 every 100 ms whenever it wants them.
+#define VOLKSWAGEN_MEB_HCA_HANDOVER_US  50000U
+#define VOLKSWAGEN_MEB_LDW_HANDOVER_US  250000U
+
+static bool volkswagen_meb_hca_sent = false;
+static uint32_t volkswagen_meb_hca_sent_ts = 0U;
+static bool volkswagen_meb_ldw_sent = false;
+static uint32_t volkswagen_meb_ldw_sent_ts = 0U;
+
 
 #define VW_MEB_COMMON_RX_CHECKS                                                                     \
   {.msg = {{MSG_LH_EPS_03, 0, 8, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
@@ -55,11 +66,12 @@
   {.msg = {{MSG_AWV_03, 2, 48, 1U, .max_counter = 15U, .ignore_frequency_check = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
 
 #define VW_MEB_LONG_TX_MSGS                                                            \
-  {MSG_HCA_03, 0, 24, .check_relay = true},                                            \
+  {MSG_HCA_03, 0, 24, .check_relay = true, .disable_static_blocking = true},          \
   {MSG_ACC_19, 0, 48, .check_relay = true}, {MSG_ACC_18, 0, 32, .check_relay = true},  \
   {MSG_EA_01, 0, 8, .check_relay = false}, {MSG_EA_02, 0, 8, .check_relay = true},     \
   {MSG_KLR_01, 0, 8, .check_relay = false}, {MSG_KLR_01, 2, 8, .check_relay = true},   \
-  {MSG_LDW_02, 0, 8, .check_relay = true}, {MSG_TA_01, 0, 8, .check_relay = true},     \
+  {MSG_LDW_02, 0, 8, .check_relay = true, .disable_static_blocking = true},           \
+  {MSG_TA_01, 0, 8, .check_relay = true},                                              \
   {MSG_PSD_04, 2, 8, .check_relay = false}, {MSG_PSD_05, 2, 8, .check_relay = false},  \
   {MSG_PSD_06, 2, 8, .check_relay = false},                                            \
 
@@ -159,10 +171,12 @@ static uint32_t volkswagen_meb_gen2_compute_crc(const CANPacket_t *msg) {
 
 static safety_config volkswagen_meb_init(uint16_t param) {
   // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
-  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true}, {MSG_GRA_ACC_01, 0, 8, .check_relay = false},
+  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true, .disable_static_blocking = true},
+                                                        {MSG_GRA_ACC_01, 0, 8, .check_relay = false},
                                                         {MSG_EA_01, 0, 8, .check_relay = false}, {MSG_EA_02, 0, 8, .check_relay = true},
                                                         {MSG_KLR_01, 0, 8, .check_relay = false}, {MSG_KLR_01, 2, 8, .check_relay = true},
-                                                        {MSG_GRA_ACC_01, 2, 8, .check_relay = false}, {MSG_LDW_02, 0, 8, .check_relay = true}};
+                                                        {MSG_GRA_ACC_01, 2, 8, .check_relay = false},
+                                                        {MSG_LDW_02, 0, 8, .check_relay = true, .disable_static_blocking = true}};
   
   static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {
 	VW_MEB_LONG_TX_MSGS
@@ -198,6 +212,10 @@ static safety_config volkswagen_meb_init(uint16_t param) {
 
   volkswagen_common_init();
   volkswagen_stock_aeb = false;
+  volkswagen_meb_hca_sent = false;
+  volkswagen_meb_hca_sent_ts = 0U;
+  volkswagen_meb_ldw_sent = false;
+  volkswagen_meb_ldw_sent_ts = 0U;
 
   volkswagen_alt_crc_variant_1 = GET_FLAG(param, FLAG_VOLKSWAGEN_ALT_CRC_VARIANT_1);
 
@@ -444,13 +462,41 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     }
   }
 
+  if (tx && (msg->addr == MSG_HCA_03)) {
+    volkswagen_meb_hca_sent = true;
+    volkswagen_meb_hca_sent_ts = microsecond_timer_get();
+  }
+  if (tx && (msg->addr == MSG_LDW_02)) {
+    volkswagen_meb_ldw_sent = true;
+    volkswagen_meb_ldw_sent_ts = microsecond_timer_get();
+  }
+
   return tx;
+}
+
+static bool volkswagen_meb_fwd_hook(int bus_num, int addr) {
+  bool block_msg = false;
+
+  if (bus_num == 2) {
+    const uint32_t ts = microsecond_timer_get();
+    // HCA_03
+    if (addr == 0x303) {
+      block_msg = volkswagen_meb_hca_sent && (safety_get_ts_elapsed(ts, volkswagen_meb_hca_sent_ts) < VOLKSWAGEN_MEB_HCA_HANDOVER_US);
+    }
+    // LDW_02
+    if (addr == 0x397) {
+      block_msg = volkswagen_meb_ldw_sent && (safety_get_ts_elapsed(ts, volkswagen_meb_ldw_sent_ts) < VOLKSWAGEN_MEB_LDW_HANDOVER_US);
+    }
+  }
+
+  return block_msg;
 }
 
 const safety_hooks volkswagen_meb_hooks = {
   .init = volkswagen_meb_init,
   .rx = volkswagen_meb_rx_hook,
   .tx = volkswagen_meb_tx_hook,
+  .fwd = volkswagen_meb_fwd_hook,
   .get_counter = volkswagen_mqb_meb_get_counter,
   .get_checksum = volkswagen_mqb_meb_get_checksum,
   .compute_checksum = volkswagen_meb_gen2_compute_crc,
