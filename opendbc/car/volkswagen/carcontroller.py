@@ -18,6 +18,11 @@ LongCtrlState = structs.CarControl.Actuators.LongControlState
 # Stock VW hides the distance popup 2 s after the last button is released. Keep in step with
 # openpilot's selfdrive/car/distance_display.py, which decides what those presses do.
 DISTANCE_POPUP_FRAMES = 200
+# Before going quiet, end HCA_03 the way the camera does: 10 standby frames still flagged high send rate, then
+# 5 announcing the drop to its 1 Hz idle rate. Stopping right after an active frame leaves the EPS waiting for
+# the next 20 ms frame, and the camera's next idle frame can be a second away.
+HCA_STANDBY_HIGH_RATE_FRAMES = 10
+HCA_STANDBY_FRAMES = 15
 DISTANCE_STEP_BUTTONS = (ButtonType.accelCruise, ButtonType.decelCruise)
 
 
@@ -55,6 +60,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # and panda forwards the camera's instead, so stock Lane Assist and Side Assist keep working
     self.stock_lane_assist = bool(CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO)) and \
                              CP.networkLocation == structs.CarParams.NetworkLocation.gateway
+    self.hca_standby_frames = HCA_STANDBY_FRAMES
 
     if CP.flags & VolkswagenFlags.PQ:
       self.CCS = pqcan
@@ -129,8 +135,16 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
             apply_curvature = 0. # inactive curvature
             steering_power = 0
 
-        if hca_enabled or not self.stock_lane_assist:
+        if not self.stock_lane_assist:
           can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        elif hca_enabled:
+          self.hca_standby_frames = 0
+          can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        elif self.hca_standby_frames < HCA_STANDBY_FRAMES:
+          high_send_rate = self.hca_standby_frames < HCA_STANDBY_HIGH_RATE_FRAMES
+          self.hca_standby_frames += 1
+          can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power,
+                                                            high_send_rate=high_send_rate))
         CS.op_steering_requested = hca_enabled or not self.stock_lane_assist
         self.apply_curvature_last = apply_curvature
         self.steering_power_last = steering_power
