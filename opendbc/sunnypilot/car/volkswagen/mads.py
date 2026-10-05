@@ -21,6 +21,9 @@ class MadsCarState(MadsCarStateBase):
   def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP):
     super().__init__(CP, CP_SP)
     self.tolerance_counter = TOLERANCE_MAX
+    # set by the car controller: whether openpilot itself requested steering on its last HCA_03. With stock Lane
+    # Assist forwarded on the gateway the EPS is also ACTIVE while the camera steers, which is not MADS steering
+    self.op_steering_requested = True
 
   def update_mads(self, ret: structs.CarState, can_parser_pt: CANParser, hca_status) -> None:
 
@@ -46,7 +49,7 @@ class MadsCarState(MadsCarStateBase):
     user_disable = any(b.type == ButtonType.cancel and b.pressed for b in ret.buttonEvents)
     
     # get states
-    steering_enabled = hca_status == "ACTIVE" # assume mads is actively steering
+    steering_enabled = hca_status == "ACTIVE" and self.op_steering_requested # assume mads is actively steering
     cruise_standby   = not ret.cruiseState.enabled
 
     # driver assistance button
