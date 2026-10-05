@@ -62,6 +62,47 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     self._tx(self._curvature_cmd_msg(0, steer_req=True, power=power))
     self.safety.set_controls_allowed(prev_allowed)
 
+  # The camera's HCA_03 and LDW_02 reach the car only while openpilot is not sending its own (stock Lane Assist)
+  STOCK_LANE_ASSIST_HANDOVER_US = {MSG_HCA_03: 50000, MSG_LDW_02: 250000}
+
+  def _stock_lane_assist_op_msg(self, addr, steer_req=False):
+    if addr == MSG_HCA_03:
+      return self._curvature_cmd_msg(0, steer_req=steer_req, power=50 if steer_req else 0, increment_timer=False)
+    return self.packer.make_can_msg_safety("LDW_02", 0, {})
+
+  def test_stock_lane_assist_forwarded_while_openpilot_silent(self):
+    for addr, handover_us in self.STOCK_LANE_ASSIST_HANDOVER_US.items():
+      self.safety.init_tests()
+      self.safety.set_timer(1000)
+      self.assertEqual(0, self.safety.safety_fwd_hook(2, addr))
+
+      self.assertTrue(self._tx(self._stock_lane_assist_op_msg(addr)))
+      self.assertEqual(-1, self.safety.safety_fwd_hook(2, addr))
+      self.safety.set_timer(1000 + handover_us - 1)
+      self.assertEqual(-1, self.safety.safety_fwd_hook(2, addr))
+      self.safety.set_timer(1000 + handover_us)
+      self.assertEqual(0, self.safety.safety_fwd_hook(2, addr))
+
+      # only the camera side is switched
+      self.assertEqual(2, self.safety.safety_fwd_hook(0, addr))
+
+  def test_stock_lane_assist_handover_across_timer_wrap(self):
+    for addr, handover_us in self.STOCK_LANE_ASSIST_HANDOVER_US.items():
+      self.safety.init_tests()
+      self.safety.set_timer(2**32 - 1000)
+      self.assertTrue(self._tx(self._stock_lane_assist_op_msg(addr)))
+      self.safety.set_timer(handover_us - 1001)
+      self.assertEqual(-1, self.safety.safety_fwd_hook(2, addr))
+      self.safety.set_timer(handover_us - 1000)
+      self.assertEqual(0, self.safety.safety_fwd_hook(2, addr))
+
+  def test_stock_lane_assist_not_blocked_by_rejected_steering(self):
+    # a steering request panda refuses never reaches the car, so it must not silence the camera either
+    self.safety.set_controls_allowed(False)
+    self.safety.set_timer(1000)
+    self.assertFalse(self._tx(self._stock_lane_assist_op_msg(MSG_HCA_03, steer_req=True)))
+    self.assertEqual(0, self.safety.safety_fwd_hook(2, MSG_HCA_03))
+
   def test_power_limit(self):
     max_power_can = self.MAX_POWER
     max_power = self.MAX_POWER_TEST
@@ -298,7 +339,7 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
 class TestVolkswagenMebStockSafety(TestVolkswagenMebSafetyBase):
   TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_GRA_ACC_01, 0], [MSG_GRA_ACC_01, 2],
              [MSG_EA_01, 0], [MSG_EA_02, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
-  FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01], 2: [MSG_HCA_03, MSG_LDW_02, MSG_EA_02]}
+  FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01], 2: [MSG_EA_02]}
 
   def setUp(self):
     self.packer = CANPackerSafety("vw_meb_generated")
@@ -337,7 +378,7 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
              [MSG_MEB_ACC_01, 0], [MSG_ACC_18, 0], [MSG_TA_01, 0],
              [MSG_EA_01, 0], [MSG_EA_02, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
   FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01],
-                           2: [MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_MEB_ACC_01, MSG_ACC_18, MSG_TA_01]}
+                           2: [MSG_EA_02, MSG_MEB_ACC_01, MSG_ACC_18, MSG_TA_01]}
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_TA_01, MSG_MEB_ACC_01, MSG_ACC_18),
                              2: (MSG_KLR_01,)}
 
