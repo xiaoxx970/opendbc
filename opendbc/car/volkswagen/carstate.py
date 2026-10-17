@@ -694,8 +694,14 @@ class CarState(CarStateBase, MadsCarState):
           # frequency check disabled on purpose: a quiet radar must not invalidate the whole parser
           cam_messages.append(("Strukturen_01", 0)) # Radar objects, for the cluster's neighbour lane cars
       
+    alt_messages = []
+    if CP.flags & VolkswagenFlags.MQB_EVO and CP.networkLocation == NetworkLocation.gateway:
+      # the car's throttle-off / brake-request state for the planner. Reading a message registers it as required,
+      # and Motor_20 stops while the engine is off, so register both with the alive check disabled (NaN frequency)
+      alt_messages += [("Motor_20", float("nan")), ("TSK_06", float("nan"))]
+
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
-      Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
+      Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], alt_messages, CanBus(CP).alt),
     }
