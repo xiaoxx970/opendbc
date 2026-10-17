@@ -173,6 +173,9 @@ class CarStateIC:
   cruiseSpeedLimit: float = auto_field()
   cruiseSpeedLimitPredicative: float = auto_field()
   cruiseSpeedLimitPredicativeType: int = auto_field()
+  # the car's own longitudinal state, so a planner can tell throttle from coasting from braking
+  engineIdle: bool = auto_field()      # engine delivers no torque (throttle lifted)
+  brakeRequested: bool = auto_field()  # the ACC function asked the ESP to brake
 
   @auto_dataclass
   class BatteryDetails:
