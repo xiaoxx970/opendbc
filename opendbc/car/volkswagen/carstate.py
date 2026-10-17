@@ -457,6 +457,13 @@ class CarState(CarStateBase, MadsCarState):
     # prevent engaging a controller which intentionally emits no ACC frames.
     ret.carNotReady = tsk_status == 5 or bool(long_control_inhibit) or radar_disable_failed
 
+    # Where the car itself sits relative to its coasting line: engine idle means the throttle is lifted,
+    # TSK_Freig_Verzoeg_Anf that ACC is braking through the ESP. Powertrain CAN, so gateway harness only;
+    # MEB has no engine and keeps the defaults.
+    if self.CP.flags & VolkswagenFlags.MQB_EVO and self.CP.networkLocation == NetworkLocation.gateway:
+      ret_ic.engineIdle = bool(alt_cp.vl["Motor_20"]["MO_Moment_im_Leerlauf"])
+      ret_ic.brakeRequested = bool(alt_cp.vl["TSK_06"]["TSK_Freig_Verzoeg_Anf"])
+
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     # Update ACC setpoint. When the setpoint is zero or there's an error, the
