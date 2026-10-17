@@ -457,6 +457,14 @@ class CarState(CarStateBase, MadsCarState):
     # prevent engaging a controller which intentionally emits no ACC frames.
     ret.carNotReady = tsk_status == 5 or bool(long_control_inhibit) or radar_disable_failed
 
+    # Where the car itself sits relative to its coasting line: engine idle means the throttle is lifted,
+    # TSK_Freig_Verzoeg_Anf that ACC is braking through the ESP. Powertrain CAN, so gateway harness only;
+    # MEB has no engine and keeps the defaults.
+    if self.CP.flags & VolkswagenFlags.MQB_EVO and self.CP.networkLocation == NetworkLocation.gateway:
+      ret_ic.engineIdle = bool(alt_cp.vl["Motor_20"]["MO_Moment_im_Leerlauf"])
+      # brakeRequested would come from TSK_06.TSK_Freig_Verzoeg_Anf, but on this bus TSK_06 fails the counter
+      # check (the parser goes invalid -> canError), so it is not read; the planner keeps its prior band width
+
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     # Update ACC setpoint. When the setpoint is zero or there's an error, the
@@ -689,8 +697,14 @@ class CarState(CarStateBase, MadsCarState):
           # frequency check disabled on purpose: a quiet radar must not invalidate the whole parser
           cam_messages.append(("Strukturen_01", 0)) # Radar objects, for the cluster's neighbour lane cars
       
+    alt_messages = []
+    if CP.flags & VolkswagenFlags.MQB_EVO and CP.networkLocation == NetworkLocation.gateway:
+      # the car's throttle-off state for the planner. Reading a message registers it as required, and Motor_20
+      # stops while the engine is off, so register it with the alive check disabled (NaN frequency)
+      alt_messages += [("Motor_20", float("nan"))]
+
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
-      Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
+      Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], alt_messages, CanBus(CP).alt),
     }
