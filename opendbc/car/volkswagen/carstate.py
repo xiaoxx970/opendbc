@@ -447,7 +447,8 @@ class CarState(CarStateBase, MadsCarState):
     # MEB has no engine and keeps the defaults.
     if self.CP.flags & VolkswagenFlags.MQB_EVO and self.CP.networkLocation == NetworkLocation.gateway:
       ret_ic.engineIdle = bool(alt_cp.vl["Motor_20"]["MO_Moment_im_Leerlauf"])
-      ret_ic.brakeRequested = bool(alt_cp.vl["TSK_06"]["TSK_Freig_Verzoeg_Anf"])
+      # brakeRequested would come from TSK_06.TSK_Freig_Verzoeg_Anf, but on this bus TSK_06 fails the counter
+      # check (the parser goes invalid -> canError), so it is not read; the planner keeps its prior band width
 
     if self.CP.flags & VolkswagenFlags.MQB_EVO:
       # ESP_Haltebestaetigung is a hold confirmation, not a motion state: it has been seen going high at
@@ -696,9 +697,9 @@ class CarState(CarStateBase, MadsCarState):
       
     alt_messages = []
     if CP.flags & VolkswagenFlags.MQB_EVO and CP.networkLocation == NetworkLocation.gateway:
-      # the car's throttle-off / brake-request state for the planner. Reading a message registers it as required,
-      # and Motor_20 stops while the engine is off, so register both with the alive check disabled (NaN frequency)
-      alt_messages += [("Motor_20", float("nan")), ("TSK_06", float("nan"))]
+      # the car's throttle-off state for the planner. Reading a message registers it as required, and Motor_20
+      # stops while the engine is off, so register it with the alive check disabled (NaN frequency)
+      alt_messages += [("Motor_20", float("nan"))]
 
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
