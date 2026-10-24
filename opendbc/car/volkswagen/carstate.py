@@ -152,6 +152,7 @@ class CarState(CarStateBase, MadsCarState):
                         pt_cp.vl["Gateway_72"]["ZV_HFS_offen"],
                         pt_cp.vl["Gateway_72"]["ZV_HBFS_offen"],
                         pt_cp.vl["Gateway_72"]["ZV_HD_offen"]])
+    ret_ic.driverDoorOpen = bool(pt_cp.vl["Gateway_72"]["ZV_FT_offen"])
 
     if self.CP.flags & VolkswagenFlags.HAS_BSM:
       # Infostufe: BSM LED on, Warnung: BSM LED flashing
@@ -243,6 +244,7 @@ class CarState(CarStateBase, MadsCarState):
                         pt_cp.vl["Gate_Komf_1"]["BSK_HL_geoeffnet"],
                         pt_cp.vl["Gate_Komf_1"]["BSK_HR_geoeffnet"],
                         pt_cp.vl["Gate_Komf_1"]["BSK_HD_Hauptraste"]])
+    ret_ic.driverDoorOpen = bool(pt_cp.vl["Gate_Komf_1"]["GK1_Fa_Tuerkont"])
 
     # Update seatbelt fastened status.
     ret.seatbeltUnlatched = not bool(pt_cp.vl["Airbag_1"]["Gurtschalter_Fahrer"])
@@ -365,6 +367,7 @@ class CarState(CarStateBase, MadsCarState):
                         doors["ZV_HFS_offen"],
                         doors["ZV_HBFS_offen"],
                         doors["ZV_HD_offen"]])
+    ret_ic.driverDoorOpen = bool(doors["ZV_FT_offen"])
 
     # Update seatbelt fastened status.
     ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
@@ -571,6 +574,7 @@ class CarState(CarStateBase, MadsCarState):
                         alt_cp.vl["Gateway_05"]["BT_Tuer_geoeffnet"],
                         alt_cp.vl["Gateway_05"]["HL_Tuer_geoeffnet"],
                         alt_cp.vl["Gateway_05"]["HR_Tuer_geoeffnet"]])
+    ret_ic.driverDoorOpen = bool(alt_cp.vl["Gateway_05"]["FT_Tuer_geoeffnet"])
 
     # Consume blind-spot monitoring info/warning LED states, if available.
     # Infostufe: BSM LED on, Warnung: BSM LED flashing
