@@ -478,7 +478,11 @@ class CarState(CarStateBase, MadsCarState):
         ret.cruiseState.speed = 0
 
     # Speed Limit
-    raining = pt_cp.vl["RLS_01"]["RS_Regenmenge"] > 0
+    ret_ic.rainAmount = float(pt_cp.vl["RLS_01"]["RS_Regenmenge"])
+    ret_ic.rainWiperRequest = int(pt_cp.vl["RLS_01"]["RS_Wischergeschwindigkeit"])
+    smls = pt_cp.vl["SMLS_01"]
+    ret_ic.wiperSwitch = 3 if smls["WH_WischerStufe2"] else 2 if smls["WH_WischerStufe1"] else 1 if smls["WH_Intervall"] else 0
+    raining = ret_ic.rainAmount > 0
     vze_04_values = cam_cp.vl["VZE_04"] if self.CP.flags & VolkswagenFlags.STOCK_VZE_PRESENT else {} # Traffic Sign Recognition
     psd_04_values = alt_cp.vl["PSD_04"] if self.CP.flags & VolkswagenFlags.STOCK_PSD_PRESENT else {} # Predicative Street Data
     psd_05_values = alt_cp.vl["PSD_05"] if self.CP.flags & VolkswagenFlags.STOCK_PSD_PRESENT else {}
