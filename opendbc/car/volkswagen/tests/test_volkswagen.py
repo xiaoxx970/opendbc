@@ -118,6 +118,17 @@ class TestVolkswagenStandstillSignals(unittest.TestCase):
       ci.update([(standstill + 1, [msg])])
       self.assertEqual(ci.CS.esp_standstill, bool(standstill))
 
+  def test_mqb_evo_rain_sensor_and_wiper_stalk(self):
+    ci, packer = self.make_interface(CAR.VOLKSWAGEN_GOLF_MK8)
+    stalks = ({}, {"WH_Intervall": 1}, {"WH_WischerStufe1": 1}, {"WH_WischerStufe2": 1}, {"WH_Tipwischen": 1})
+    for i, (stalk, expected) in enumerate(zip(stalks, (0, 1, 2, 3, 0), strict=True)):
+      msgs = [packer.make_can_msg("RLS_01", 0, {"RS_Regenmenge": 10 * i, "RS_Wischergeschwindigkeit": i}),
+              packer.make_can_msg("SMLS_01", 0, stalk)]
+      ci.update([(i + 1, msgs)])
+      self.assertEqual(ci.CS.out_ic.rainAmount, 10 * i)
+      self.assertEqual(ci.CS.out_ic.rainWiperRequest, i)
+      self.assertEqual(ci.CS.out_ic.wiperSwitch, expected)
+
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
   def test_flag_values_are_unique(self):

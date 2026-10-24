@@ -177,6 +177,10 @@ class CarStateIC:
   engineIdle: bool = auto_field()      # engine delivers no torque (throttle lifted)
   brakeRequested: bool = auto_field()  # the ACC function asked the ESP to brake
   driverDoorOpen: bool = auto_field()  # the driver's door alone; doorOpen is any door, the trunk included
+  # windscreen rain sensor and wiper stalk, so the planner can follow further back in the wet
+  rainAmount: float = auto_field()       # rain sensor amount, 0-100 %, smoothed by the sensor
+  rainWiperRequest: int = auto_field()   # wiper speed the rain sensor asks for, 0 (none) - 7
+  wiperSwitch: int = auto_field()        # wiper stalk: 0 off, 1 interval/auto, 2 stage 1, 3 stage 2
 
   @auto_dataclass
   class BatteryDetails:
