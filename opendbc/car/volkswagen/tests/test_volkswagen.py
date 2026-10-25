@@ -6,9 +6,9 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
-from opendbc.car.volkswagen.carstate import CarState
+from opendbc.car.volkswagen.carstate import CarState, RADAR_ACC_HUD_TIMEOUT_FRAMES
 from opendbc.car.volkswagen.interface import CarInterface
-from opendbc.car.volkswagen.values import CAR, DBC, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
+from opendbc.car.volkswagen.values import CAR, DBC, CanBus, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
 Ecu = CarParams.Ecu
@@ -128,6 +128,41 @@ class TestVolkswagenStandstillSignals(unittest.TestCase):
       self.assertEqual(ci.CS.out_ic.rainAmount, 10 * i)
       self.assertEqual(ci.CS.out_ic.rainWiperRequest, i)
       self.assertEqual(ci.CS.out_ic.wiperSwitch, expected)
+
+
+class TestRadarAccHud(unittest.TestCase):
+  @staticmethod
+  def make_interface(alpha_long=True, gateway=True):
+    fingerprint = {bus: {} for bus in range(4)}
+    if gateway:
+      fingerprint[1][0x520] = 8  # Airbag_02 on bus 1: gateway harness
+    cp = CarInterface.get_params(CAR.VOLKSWAGEN_GOLF_MK8, fingerprint, [], alpha_long, False, False)
+    cp_sp = CarInterface.get_params_sp(cp, CAR.VOLKSWAGEN_GOLF_MK8, fingerprint, [], alpha_long, False, False)
+    cp_ic = CarInterface.get_params_ic(cp, CAR.VOLKSWAGEN_GOLF_MK8, fingerprint, [], alpha_long, False, False)
+    return CarInterface(cp, cp_sp, cp_ic), CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
+
+  def test_read_only_with_openpilot_long_on_the_gateway(self):
+    for alpha_long, gateway in ((True, True), (False, True), (True, False)):
+      with self.subTest(alpha_long=alpha_long, gateway=gateway):
+        ci, _ = self.make_interface(alpha_long, gateway)
+        self.assertEqual(ci.CS.radar_acc_hud_available, alpha_long and gateway)
+
+  def test_radar_values_kept_while_it_sends(self):
+    ci, packer = self.make_interface()
+    radar = packer.make_can_msg("ACC_19", CanBus(ci.CP).cam, {"ACC_Texte_Zusatzanz_02": 4, "ACC_Optischer_Fahrerhinweis": 1})
+    ci.update([(1, [radar])])
+    self.assertEqual(ci.CS.radar_acc_hud["ACC_Texte_Zusatzanz_02"], 4)
+    for t in range(2, RADAR_ACC_HUD_TIMEOUT_FRAMES + 1):
+      ci.update([(t, [])])
+    self.assertEqual(ci.CS.radar_acc_hud["ACC_Optischer_Fahrerhinweis"], 1)
+    ci.update([(RADAR_ACC_HUD_TIMEOUT_FRAMES + 1, [])])
+    self.assertIsNone(ci.CS.radar_acc_hud)  # the radar went quiet: never hold on to its last warning
+
+  def test_missing_radar_hud_does_not_invalidate_the_parser(self):
+    ci, packer = self.make_interface()
+    self.assertIsNone(ci.CS.radar_acc_hud)
+    state = ci.can_parsers[Bus.cam].message_states[packer.dbc.name_to_msg["ACC_19"].address]
+    self.assertTrue(state.ignore_alive)
 
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):

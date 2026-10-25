@@ -356,7 +356,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit,
                                                          self.flags.mqb_evo, self.frame // self.CCP.ACC_HUD_STEP,
-                                                         CS.neighbour_lead_distance))
+                                                         CS.neighbour_lead_distance, CS.radar_acc_hud))
 
       else:
         lead_distance = 0

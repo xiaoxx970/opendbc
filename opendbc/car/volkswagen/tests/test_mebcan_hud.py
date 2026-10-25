@@ -4,7 +4,7 @@ from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus
 from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, DBC
-from opendbc.car.volkswagen.mebcan import create_acc_hud_control
+from opendbc.car.volkswagen.mebcan import create_acc_hud_control, RADAR_HUD_WARNING_SIGNALS
 from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_ENABLED, LDW_LINE_ACTIVE, LDW_LINE_NONE, LDW_LINE_PASSIVE, \
   get_acc_hud_event, get_lane_line_display
 
@@ -88,6 +88,52 @@ class TestSideCarsOnCluster(unittest.TestCase):
       addr, dat, bus = create_acc_hud_control(packer, 0, ACC_HUD_ACTIVE, 100, False, 2, False, False, 0, 20, False, event, 40 / 3.6, True, 0)
       parser.update([(0, [(addr, dat, bus)])])
       self.assertAlmostEqual(parser.vl["ACC_19"]["ACC_Event_Wunschgeschw"], 40., delta=0.5)
+
+
+class TestRadarHudWarning(unittest.TestCase):
+  # the radar's own ACC_19 at the 2026-10-25 13:42:48 FCW (route 0000021a seg 11), and while it just follows a lead
+  RADAR_FCW = {"ACC_Optischer_Fahrerhinweis": 1, "ACC_Akustischer_Fahrerhinweis": 3, "ACC_Warnhinweis": 0, "ACC_EGO_Fahrzeug": 2,
+               "ACC_Texte_Zusatzanz_02": 4, "ACC_Texte_Primaeranz_02": 0, "ACC_Display_Prio": 0, "ACC_rel_Objekt_Zusatzanz": 2,
+               "ACC_Relevantes_Objekt_02": 2}
+  RADAR_FOLLOWING = {"ACC_Optischer_Fahrerhinweis": 0, "ACC_Akustischer_Fahrerhinweis": 0, "ACC_Warnhinweis": 0, "ACC_EGO_Fahrzeug": 1,
+                     "ACC_Texte_Zusatzanz_02": 0, "ACC_Texte_Primaeranz_02": 0, "ACC_Display_Prio": 2, "ACC_rel_Objekt_Zusatzanz": 1,
+                     "ACC_Relevantes_Objekt_02": 1}
+
+  @staticmethod
+  def _values(acc_control, fcw_alert, radar_hud):
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", 0)], 0)
+    msg = create_acc_hud_control(packer, 0, acc_control, 100, True, 2, False, False, 30., 20, fcw_alert, 0, 0, True, 0, radar_hud=radar_hud)
+    parser.update([(0, [msg])])
+    return dict(parser.vl["ACC_19"])
+
+  def test_radar_warning_shown_without_openpilot_fcw(self):
+    for acc_control in (ACC_HUD_ACTIVE, ACC_HUD_ENABLED):
+      with self.subTest(acc_control=acc_control):
+        v = self._values(acc_control, False, self.RADAR_FCW)
+        self.assertEqual({sig: v[sig] for sig in RADAR_HUD_WARNING_SIGNALS}, self.RADAR_FCW)
+
+  def test_radar_wins_over_openpilot_fcw(self):
+    v = self._values(ACC_HUD_ACTIVE, True, self.RADAR_FCW)
+    self.assertEqual({sig: v[sig] for sig in RADAR_HUD_WARNING_SIGNALS}, self.RADAR_FCW)
+    # its sound ends first: openpilot's does not keep it going
+    quiet = {**self.RADAR_FCW, "ACC_Akustischer_Fahrerhinweis": 0}
+    self.assertEqual(self._values(ACC_HUD_ACTIVE, True, quiet)["ACC_Akustischer_Fahrerhinweis"], 0)
+
+  def test_openpilot_fcw_when_the_radar_does_not_warn(self):
+    for radar_hud in (None, self.RADAR_FOLLOWING):
+      with self.subTest(radar_hud=radar_hud):
+        v = self._values(ACC_HUD_ACTIVE, True, radar_hud)
+        self.assertEqual((v["ACC_Optischer_Fahrerhinweis"], v["ACC_Akustischer_Fahrerhinweis"], v["ACC_EGO_Fahrzeug"],
+                          v["ACC_Texte_Zusatzanz_02"], v["ACC_Display_Prio"]), (1, 3, 2, 11, 0))
+
+  def test_radar_states_that_are_not_warnings_change_nothing(self):
+    # its override text, its ACC off text and the chime it gives when it sees ACC switch off
+    for extra in ({}, {"ACC_Texte_Zusatzanz_02": 3}, {"ACC_Texte_Zusatzanz_02": 1}, {"ACC_Akustischer_Fahrerhinweis": 1}):
+      with self.subTest(extra=extra):
+        radar_hud = {**self.RADAR_FOLLOWING, **extra}
+        for fcw_alert in (False, True):
+          self.assertEqual(self._values(ACC_HUD_ACTIVE, fcw_alert, radar_hud), self._values(ACC_HUD_ACTIVE, fcw_alert, None))
 
 
 if __name__ == "__main__":
