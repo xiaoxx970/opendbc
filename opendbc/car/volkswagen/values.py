@@ -273,6 +273,30 @@ class VolkswagenFlags(IntFlag):
   FORD_CAR     = 2 ** 17
 
 
+class VolkswagenFlagBits:
+  # CP.flags as plain bools for the per-frame code. The flags are fixed once fingerprinted, and every
+  # `CP.flags & VolkswagenFlags.X` builds a new enum member (~1 us): card tested ~35 per frame, a tenth of its time.
+  def __init__(self, flags: int):
+    self.stock_hca_present = bool(flags & VolkswagenFlags.STOCK_HCA_PRESENT)
+    self.kombi_present = bool(flags & VolkswagenFlags.KOMBI_PRESENT)
+    self.stock_klr_present = bool(flags & VolkswagenFlags.STOCK_KLR_PRESENT)
+    self.stock_psd_present = bool(flags & VolkswagenFlags.STOCK_PSD_PRESENT)
+    self.stock_psd_06_present = bool(flags & VolkswagenFlags.STOCK_PSD_06_PRESENT)
+    self.stock_diagnose_01_present = bool(flags & VolkswagenFlags.STOCK_DIAGNOSE_01_PRESENT)
+    self.alt_gear = bool(flags & VolkswagenFlags.ALT_GEAR)
+    self.disable_radar = bool(flags & VolkswagenFlags.DISABLE_RADAR)
+    self.stock_ea_present = bool(flags & VolkswagenFlags.STOCK_EA_PRESENT)
+    self.stock_vze_present = bool(flags & VolkswagenFlags.STOCK_VZE_PRESENT)
+    self.has_bsm = bool(flags & VolkswagenFlags.HAS_BSM)
+    self.pq = bool(flags & VolkswagenFlags.PQ)
+    self.meb = bool(flags & VolkswagenFlags.MEB)
+    self.meb_gen2 = bool(flags & VolkswagenFlags.MEB_GEN2)
+    self.mqb_evo = bool(flags & VolkswagenFlags.MQB_EVO)
+    self.mlb = bool(flags & VolkswagenFlags.MLB)
+    self.ford_car = bool(flags & VolkswagenFlags.FORD_CAR)
+    self.meb_or_mqb_evo = self.meb or self.mqb_evo
+
+
 @dataclass
 class VolkswagenMLBPlatformConfig(PlatformConfig):
   dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_mlb'})
