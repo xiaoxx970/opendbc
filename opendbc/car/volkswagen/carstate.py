@@ -14,6 +14,7 @@ ButtonType = structs.CarState.ButtonEvent.Type
 
 MAX_LEAD_DISTANCE = 150  # ACC_19 Lead_Distance* signal range in m
 NEIGHBOUR_MIN_LAT_OFFSET = 1.0  # m, side objects closer to our axis are not drawn as side cars
+RADAR_ACC_HUD_TIMEOUT_FRAMES = 25  # the radar sends ACC_19 every 60 ms: drop its values after four missed frames
 
 
 def radar_objects_available(CP) -> bool:
@@ -22,6 +23,15 @@ def radar_objects_available(CP) -> bool:
          not (CP.flags & VolkswagenFlags.DISABLE_RADAR) and \
          not (CP.flags & VolkswagenFlags.MQB_EVO_GEN2) and \
          CP.networkLocation == NetworkLocation.gateway
+
+
+def radar_acc_hud_available(CP) -> bool:
+  # The radar's own ACC_19, which openpilot longitudinal replaces on the gateway harness. It is read only to pass the
+  # radar's driver warnings on in openpilot's ACC_19 (see mebcan.merge_radar_hud_warning).
+  return bool(CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO)) and \
+         not (CP.flags & VolkswagenFlags.DISABLE_RADAR) and \
+         CP.networkLocation == NetworkLocation.gateway and \
+         CP.openpilotLongitudinalControl
 
 
 class CarState(CarStateBase, MadsCarState):
@@ -54,6 +64,10 @@ class CarState(CarStateBase, MadsCarState):
     self.travel_assist_available = False
     self.neighbour_lead_distance = (0.0, 0.0)  # (left, right) nearest radar object per neighbour lane, 0 = none
     self.radar_objects_available = radar_objects_available(CP)
+    self.radar_acc_hud_available = radar_acc_hud_available(CP)
+    self.radar_acc_hud = None  # the radar's latest ACC_19 values while it keeps sending them, else None
+    self.radar_acc_hud_nanos = 0
+    self.radar_acc_hud_frame = 0
 
   @staticmethod
   def parse_neighbour_leads(radar_values) -> tuple[float, float]:
@@ -77,6 +91,14 @@ class CarState(CarStateBase, MadsCarState):
       out.append(min(distances) if distances else 0.0)
 
     return out[0], out[1]
+
+  def update_radar_acc_hud(self, radar_cp):
+    nanos = radar_cp.ts_nanos["ACC_19"]["ACC_Texte_Zusatzanz_02"]
+    if nanos != self.radar_acc_hud_nanos:
+      self.radar_acc_hud_nanos = nanos
+      self.radar_acc_hud_frame = self.frame
+    fresh = nanos != 0 and self.frame - self.radar_acc_hud_frame < RADAR_ACC_HUD_TIMEOUT_FRAMES
+    self.radar_acc_hud = radar_cp.vl["ACC_19"] if fresh else None
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -395,6 +417,8 @@ class CarState(CarStateBase, MadsCarState):
 
     ret.stockFcw = bool(ext_cp.vl["AWV_03"]["FCW_Active"]) if not self.flags.disable_radar else False # currently most plausible candidate
     ret.stockAeb = bool(ext_cp.vl["AWV_03"]["AEB_Active"]) if not self.flags.disable_radar else False
+    if self.radar_acc_hud_available:
+      self.update_radar_acc_hud(ext_cp)
 
     self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"] if not self.flags.disable_radar else 2 # 2: acc stop and go
     if self.flags.mqb_evo:
@@ -705,6 +729,9 @@ class CarState(CarStateBase, MadsCarState):
         if radar_objects_available(CP):
           # frequency check disabled on purpose: a quiet radar must not invalidate the whole parser
           cam_messages.append(("Strukturen_01", 0)) # Radar objects, for the cluster's neighbour lane cars
+      if radar_acc_hud_available(CP):
+        # only read for the warnings it carries, so a quiet radar must not invalidate the whole parser
+        cam_messages.append(("ACC_19", float("nan")))
       
     alt_messages = []
     if CP.flags & VolkswagenFlags.MQB_EVO and CP.networkLocation == NetworkLocation.gateway:

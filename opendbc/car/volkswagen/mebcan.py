@@ -437,8 +437,30 @@ def get_acc_hud_display_prio(acc_control, fcw_alert):
   return 1
 
 
+# The radar's driver warnings in its own ACC_19. openpilot replaces that message on the gateway harness, so its HUD passes
+# them on: either side raises a warning on the cluster, and while the radar warns its warning signals replace openpilot's,
+# as that is what the cluster shows on a stock car. 2026-10-25 FCW (route 0000021a seg 11): optical 1, acoustic 3,
+# red ego car, text 4 and both object fields 2, 0.1 s before openpilot's own warning (text 11).
+RADAR_HUD_WARNING_TEXTS = (4, 30, 41, 42, 43)  # ACC_Texte_Zusatzanz_02: ABSTAND, ACHTUNG, AW_Warnung_1-3
+RADAR_HUD_WARNING_SIGNALS = ("ACC_Optischer_Fahrerhinweis", "ACC_Akustischer_Fahrerhinweis", "ACC_Warnhinweis", "ACC_EGO_Fahrzeug",
+                             "ACC_Texte_Zusatzanz_02", "ACC_Texte_Primaeranz_02", "ACC_Display_Prio", "ACC_rel_Objekt_Zusatzanz",
+                             "ACC_Relevantes_Objekt_02")
+
+
+def radar_hud_warning(radar_hud) -> bool:
+  # Its override text (3), ACC off text (1) and the chime it gives when it sees ACC switch off (acoustic 1) are not warnings
+  return bool(radar_hud["ACC_Optischer_Fahrerhinweis"] or radar_hud["ACC_Warnhinweis"] or radar_hud["ACC_EGO_Fahrzeug"] == 2 or
+              radar_hud["ACC_Display_Prio"] == 0 or radar_hud["ACC_rel_Objekt_Zusatzanz"] == 2 or
+              radar_hud["ACC_Relevantes_Objekt_02"] == 2 or radar_hud["ACC_Texte_Zusatzanz_02"] in RADAR_HUD_WARNING_TEXTS)
+
+
+def merge_radar_hud_warning(values, radar_hud):
+  if radar_hud is not None and radar_hud_warning(radar_hud):
+    values.update({sig: int(radar_hud[sig]) for sig in RADAR_HUD_WARNING_SIGNALS})
+
+
 def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
-                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.)):
+                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.), radar_hud=None):
   # Side lane cars are drawn like the lead car, in every ACC state. A side car at the lead's distance
   # is the lead itself cutting in before the radar re-assigns its lane: draw it only once.
   lead_left, lead_right = (d if not (lead_visible and abs(d - distance) < SIDE_LEAD_DEDUP_DISTANCE) else 0.
@@ -488,6 +510,8 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
   if "Lead_Type_Left" in acc_19_sigs:
     values["Lead_Type_Left"] = left_type
     values["Lead_Type_Right"] = right_type
+
+  merge_radar_hud_warning(values, radar_hud)
 
   return packer.make_can_msg("ACC_19", bus, values)
 
