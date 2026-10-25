@@ -265,6 +265,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
   def __init__(self, CP, CCP):
     super().__init__(CP, CCP)
     self.CP = CP
+    self.mqb_evo = bool(CP.flags & VolkswagenFlags.MQB_EVO)  # tested every frame, see VolkswagenFlagBits
     self.acc_enabled = False
     self.hold_for_engine_start = False
     self.start_stop_info = 0
@@ -295,7 +296,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     # MQB Evo only: the engine can auto stop while held, and it has to be running before the car moves.
     # CS.esp_hold_confirmation is gated on physical standstill in carstate, so this cannot fire mid crawl.
     driver_override = self.acc_enabled and CS.out.gasPressed and not CS.out.brakePressed
-    self.hold_for_engine_start = bool(self.CP.flags & VolkswagenFlags.MQB_EVO) and driver_override and \
+    self.hold_for_engine_start = self.mqb_evo and driver_override and \
                                  CS.esp_hold_confirmation and not CS.engine_on
 
     accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = super().update(
@@ -308,7 +309,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     # ask for a restart once the engine has auto stopped, leaving the car unable to pull away. held is
     # gated on physical standstill via carstate, so an auto stop is only permitted once stopped.
     # Engines are MQB Evo only, MEB is electric and keeps the stock bool.
-    if not (self.CP.flags & VolkswagenFlags.MQB_EVO):
+    if not self.mqb_evo:
       self.start_stop_info = int(self.acc_enabled)
     elif not self.acc_enabled:
       self.start_stop_info = 0
