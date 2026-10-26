@@ -320,6 +320,12 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     else:
       self.start_stop_info = 1
 
+    # The stock car restarts an auto stopped engine when the lead pulls away, engaged or not, which warns
+    # the driver and makes the launch smoother. The radar still computes that request behind openpilot,
+    # but its ACC_18 is blocked, so forward it. Only at a physical stop: a start request never moves the car.
+    if self.mqb_evo and CS.radar_engine_start_request and CS.out.standstill:
+      self.start_stop_info = 2
+
     return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held
 
 

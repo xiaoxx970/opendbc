@@ -32,7 +32,7 @@ class TestMebLongStateMachine(unittest.TestCase):
   @staticmethod
   def make_car_state(v_ego=10.0, available=True, acc_faulted=False, stock_aeb=False,
                      gas_pressed=False, brake_pressed=False, esp_hold=False, esp_standstill=False, standstill=None,
-                     engine_on=True):
+                     engine_on=True, radar_engine_start=False):
     out = SimpleNamespace(
       vEgo=v_ego,
       standstill=(v_ego == 0.0) if standstill is None else standstill,
@@ -42,7 +42,8 @@ class TestMebLongStateMachine(unittest.TestCase):
       gasPressed=gas_pressed,
       brakePressed=brake_pressed,
     )
-    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold, esp_standstill=esp_standstill, engine_on=engine_on)
+    return SimpleNamespace(out=out, esp_hold_confirmation=esp_hold, esp_standstill=esp_standstill, engine_on=engine_on,
+                           radar_engine_start_request=radar_engine_start)
 
   @staticmethod
   def make_car_control(enabled=True, long_active=True, override=False, long_state=LongCtrlState.pid):
@@ -324,6 +325,32 @@ class TestMebLongStateMachine(unittest.TestCase):
         CS = self.make_car_state(v_ego=10.0)
         CC = self.make_car_control(enabled=False, long_active=False)
         state.update(CS, CC, 0.0)
+        self.assertEqual(state.start_stop_info, 0)
+
+  def test_forwards_radar_engine_start_request(self):
+    # The radar asks for an engine start when the lead pulls away, also while openpilot is disengaged
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        mqb_evo = bool(platform.config.flags & VolkswagenFlags.MQB_EVO)
+        for enabled in (False, True):
+          state = self.make_state_machine(platform)
+          CC = self.make_car_control(enabled=enabled, long_active=enabled, long_state=LongCtrlState.stopping)
+          CS = self.make_car_state(v_ego=0.0, esp_hold=True, engine_on=False)
+          state.update(CS, CC, -1.0)
+          self.assertEqual(state.start_stop_info, 0 if (mqb_evo or not enabled) else 1)
+
+          CS = self.make_car_state(v_ego=0.0, esp_hold=True, engine_on=False, radar_engine_start=True)
+          _, _, hold_type, _, leaving_standstill, _ = state.update(CS, CC, -1.0)
+          self.assertEqual(state.start_stop_info, 2 if mqb_evo else int(enabled))
+          # only the engine: the hold and the launch stay openpilot's
+          self.assertFalse(leaving_standstill)
+          if not enabled:
+            self.assertNotEqual(hold_type, mebcan.ACC_HMS_HOLD)
+
+        # never while moving
+        state = self.make_state_machine(platform)
+        CS = self.make_car_state(v_ego=5.0, radar_engine_start=True)
+        state.update(CS, self.make_car_control(enabled=False, long_active=False), 0.0)
         self.assertEqual(state.start_stop_info, 0)
 
   def test_override_holds_until_the_engine_restarts(self):
