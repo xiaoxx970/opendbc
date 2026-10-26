@@ -1,10 +1,12 @@
 import random
 import re
 import unittest
+from types import SimpleNamespace
 
 from opendbc.can import CANPacker
-from opendbc.car import Bus, DT_CTRL
+from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.structs import CarParams
+from opendbc.car.volkswagen import mebcan
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
 from opendbc.car.volkswagen.carstate import CarState, RADAR_ACC_HUD_TIMEOUT_FRAMES
 from opendbc.car.volkswagen.interface import CarInterface
@@ -12,6 +14,7 @@ from opendbc.car.volkswagen.values import CAR, DBC, CanBus, CarControllerParams 
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
 Ecu = CarParams.Ecu
+LongCtrlState = structs.CarControl.Actuators.LongControlState
 
 CHASSIS_CODE_PATTERN = re.compile('[A-Z0-9]{2}')
 # TODO: determine the unknown groups
@@ -112,11 +115,37 @@ class TestVolkswagenStandstillSignals(unittest.TestCase):
             self.assertEqual(ci.CS.esp_hold_confirmation, hms_status == 1)
 
   def test_mqb_evo_standstill(self):
+    # ESC_50.Standstill never reads 1 on a Golf 8, so zero wheel speed counts as standstill too
     ci, packer = self.make_interface(CAR.VOLKSWAGEN_GOLF_MK8)
-    for standstill in (0, 1):
-      msg = packer.make_can_msg("ESC_50", 0, {"Standstill": standstill})
-      ci.update([(standstill + 1, [msg])])
-      self.assertEqual(ci.CS.esp_standstill, bool(standstill))
+    wheels = ("VL_Radgeschw", "VR_Radgeschw", "HL_Radgeschw", "HR_Radgeschw")
+    for i, (standstill, wheel_speed, expected) in enumerate(((0, 0., True), (1, 0., True), (0, 5., False), (1, 5., True))):
+      msgs = [packer.make_can_msg("ESC_50", 0, {"Standstill": standstill}),
+              packer.make_can_msg("ESC_51", 0, dict.fromkeys(wheels, wheel_speed))]
+      ci.update([(i + 1, msgs)])
+      self.assertEqual(ci.CS.esp_standstill, expected, f"{standstill=} {wheel_speed=}")
+
+  def test_mqb_evo_hold_drop_at_standstill_keeps_drive_off(self):
+    # 2026-10-26 19:53: ~0.5 s after ANFAHREN the restarted engine came up and the ESP dropped its hold
+    # confirmation while the wheels were still at zero. ANFAHREN must survive that until the car moves.
+    ci, packer = self.make_interface(CAR.VOLKSWAGEN_GOLF_MK8)
+    state = mebcan.SunnypilotMebLongStateMachine(ci.CP, CCP(ci.CP))
+    wheels = ("VL_Radgeschw", "VR_Radgeschw", "HL_Radgeschw", "HR_Radgeschw")
+    CC = SimpleNamespace(enabled=True, longActive=True, cruiseControl=SimpleNamespace(override=False),
+                         actuators=SimpleNamespace(longControlState=LongCtrlState.stopping))
+
+    def step(i, hold, wheel_speed):
+      ci.update([(i, [packer.make_can_msg("ESP_21", 0, {"ESP_Haltebestaetigung": hold}),
+                      packer.make_can_msg("ESC_51", 0, dict.fromkeys(wheels, wheel_speed))])])
+      ci.CS.out.vEgo = ci.CS.out.vEgoRaw
+      return state.update(ci.CS, CC, 0.5)[2]
+
+    self.assertEqual(step(1, 1, 0.), mebcan.ACC_HMS_HOLD)
+    CC.actuators.longControlState = LongCtrlState.pid
+    self.assertEqual(step(2, 1, 0.), mebcan.ACC_HMS_RELEASE)
+    for i in range(3, 6):
+      self.assertEqual(step(i, 0, 0.), mebcan.ACC_HMS_RELEASE)
+    # the wheels turn: drive-off is done and the hold is ramped away as before
+    self.assertEqual(step(6, 0, 1.), mebcan.ACC_HMS_RAMP_RELEASE)
 
   def test_mqb_evo_rain_sensor_and_wiper_stalk(self):
     ci, packer = self.make_interface(CAR.VOLKSWAGEN_GOLF_MK8)
