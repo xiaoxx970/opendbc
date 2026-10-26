@@ -422,7 +422,11 @@ class CarState(CarStateBase, MadsCarState):
 
     self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"] if not self.flags.disable_radar else 2 # 2: acc stop and go
     if self.flags.mqb_evo:
-      self.esp_standstill = bool(pt_cp.vl["ESC_50"]["Standstill"])
+      # ESC_50.Standstill has never read 1 on a Golf 8, not once in thousands of frames at zero wheel speed. That
+      # left the long state machine's drive-off latch dead: the hold confirmation drops as soon as the ESP starts
+      # releasing, ANFAHREN fell back to a ramp request at standstill, the ESP re-held and ignored the ANFAHREN
+      # that followed, so the car stayed put until the driver pressed the accelerator. Use wheel speed as well.
+      self.esp_standstill = bool(pt_cp.vl["ESC_50"]["Standstill"]) or ret.standstill
       # ESP_Haltebestaetigung is a hold confirmation, not a motion state: it has been seen going high at
       # 0.69, 1.17, 1.25 and 2.86 km/h. Consumers read this attribute as "stopped and held" (the other
       # branch derives it from a motion state signal), so gate it on wheel speed to keep that contract.
