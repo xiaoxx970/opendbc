@@ -129,6 +129,11 @@ class CarControllerParams:
       self.STEER_OVERRIDE_RELEASE_TORQUE = 30       # Driver torque 0.3 Nm, below this counts as let go
       self.STEER_OVERRIDE_RELEASE_FRAMES = 10       # HCA_03 frames (0.2 s) let go before openpilot takes back
       self.STEER_OVERRIDE_SPEED_BP = [30. * CV.KPH_TO_MS, 50. * CV.KPH_TO_MS]  # full handover below, original behaviour above
+      self.STEER_OVERRIDE_UNWIND_RATE = 90.         # deg/s, wheel springing back against the push with a light hand ends the override
+      self.STEER_OVERRIDE_UNWIND_FRAMES = 3         # HCA_03 frames (0.06 s)
+      self.STEER_OVERRIDE_FAST_DROP_SPEED = 30. * CV.KPH_TO_MS
+      self.STEERING_POWER_STEP_OVERRIDE = 6         # HCA_03 power drop per frame in a low-speed override (stock camera drops 6-9)
+      self.STEERING_POWER_STEP_HANDBACK = 4         # HCA_03 power rise per frame while handing back after a low-speed override
       
       self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
       self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)

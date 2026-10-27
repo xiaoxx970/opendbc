@@ -85,6 +85,9 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.override_active = False
     self.override_release_frames = 0
     self.override_curvature_error = float('inf')
+    self.override_dir = 0
+    self.override_hold_curvature = 0.
+    self.override_unwind_frames = 0
     self.accel_last = 0.
     self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
     self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
@@ -138,11 +141,21 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
           # just under the entry threshold, and exiting there makes the EPS grab and release about once a second
           if self.override_frames >= self.CCP.STEER_OVERRIDE_FRAMES:
             self.override_active = True
+          # remember which way the driver pushed and where the wheel was while they still pushed
+          if self.override_active and driver_override:
+            self.override_dir = override_sign
+            self.override_hold_curvature = CS.out_ic.steeringCurvature
           if abs(CS.out.steeringTorque) < self.CCP.STEER_OVERRIDE_RELEASE_TORQUE:
             self.override_release_frames += 1
           else:
             self.override_release_frames = 0
           if self.override_release_frames >= self.CCP.STEER_OVERRIDE_RELEASE_FRAMES:
+            self.override_active = False
+          # a light hand with the wheel springing back against the push is a release mid-curve: take back right away
+          unwinding = self.override_active and abs(CS.out.steeringTorque) < self.CCP.STEER_DRIVER_ALLOWANCE and \
+                      CS.out.steeringRateDeg * self.override_dir < -self.CCP.STEER_OVERRIDE_UNWIND_RATE
+          self.override_unwind_frames = self.override_unwind_frames + 1 if unwinding else 0
+          if self.override_unwind_frames >= self.CCP.STEER_OVERRIDE_UNWIND_FRAMES:
             self.override_active = False
           # only low speed needs it: above STEER_OVERRIDE_SPEED_BP the EPS already feels like stock, so fade back to the
           # original behaviour there and leave highway steering exactly as before
@@ -156,16 +169,30 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
             # widen back out gradually after release so the command doesn't snap back to the model's curvature
             self.override_curvature_error += self.CCP.STEER_OVERRIDE_CURVATURE_RELAX
           if self.override_curvature_error < self.CCP.CURVATURE_MAX:
-            # clip before the rate limits so the step toward the measured curvature stays within the jerk limit
-            apply_curvature = float(np.clip(apply_curvature, CS.out_ic.steeringCurvature - self.override_curvature_error,
-                                                              CS.out_ic.steeringCurvature + self.override_curvature_error))
+            # clip before the rate limits so the step toward the measured curvature stays within the jerk limit.
+            # On the side the driver pushed, openpilot may also pull back to where the wheel was held, so a
+            # self-centering wheel after a release mid-curve doesn't drag the command out of the curve.
+            meas = CS.out_ic.steeringCurvature
+            err = self.override_curvature_error
+            if self.override_dir != 0:
+              push = -self.override_dir  # torque > 0 is left, which is negative curvature
+              toward_push = float(np.clip((apply_curvature - meas) * push, -err,
+                                          max((self.override_hold_curvature - meas) * push, 0.) + err))
+              apply_curvature = meas + toward_push * push
+            else:
+              apply_curvature = float(np.clip(apply_curvature, meas - err, meas + err))
           else:
             self.override_curvature_error = float('inf')
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
                                                                     CS.out_ic.steeringCurvature, CC.latActive, self.CCP.STEER_STEP)
 
-          min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
-          max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+          # faster power changes around a low-speed override: drop quicker once it starts, come back quicker after it ends
+          handing_back = not self.override_active and self.override_curvature_error != float('inf') and override_weight > 0.
+          fast_drop = self.override_active and CS.out.vEgo < self.CCP.STEER_OVERRIDE_FAST_DROP_SPEED
+          power_step_down = self.CCP.STEERING_POWER_STEP_OVERRIDE if fast_drop else self.CCP.STEERING_POWER_STEP
+          power_step_up = self.CCP.STEERING_POWER_STEP_HANDBACK if handing_back else self.CCP.STEERING_POWER_STEP
+          min_power = max(self.steering_power_last - power_step_down, self.CCP.STEERING_POWER_MIN)
+          max_power = min(self.steering_power_last + power_step_up, self.CCP.STEERING_POWER_MAX)
           target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
                                                                           [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           if sustained_override:
@@ -176,6 +203,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         else:
           self.override_frames = 0
           self.override_active = False
+          self.override_unwind_frames = 0
           self.override_curvature_error = float('inf')
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
