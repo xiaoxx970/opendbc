@@ -1,4 +1,5 @@
 import numpy as np
+from types import SimpleNamespace
 
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs, make_tester_present_msg
@@ -6,6 +7,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.carstate import RADAR_ACC_ENGAGED, RADAR_ACC_FAULTED
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlagBits
 from opendbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit
 
@@ -24,6 +26,12 @@ DISTANCE_POPUP_FRAMES = 200
 HCA_STANDBY_HIGH_RATE_FRAMES = 10
 HCA_STANDBY_FRAMES = 15
 DISTANCE_STEP_BUTTONS = (ButtonType.accelCruise, ButtonType.decelCruise)
+# The radar faults its own ACC when it regulates while TSK stays in standby for more than 0.4 s. Both engage on the press,
+# openpilot a few frames later: cancel the radar when openpilot has not followed by now.
+RADAR_ACC_CANCEL_FRAMES = 15
+# openpilot's ACC waits this long after engaging for the radar's own ACC to engage too, then regulates anyway: the radar
+# engages 0.01-0.23 s after the press, and an ACC openpilot can use beats keeping the radar's engine restart
+RADAR_ENGAGE_WAIT_FRAMES = 50
 
 
 class HCAMitigation:
@@ -80,6 +88,9 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
     self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
     self.gra_acc_counter_last = None
+    self.radar_acc_unfollowed_frames = 0
+    self.radar_engage_wait_frames = 0  # frames openpilot's ACC has waited for the radar's, 0 = not waiting
+    self.enabled_prev = False
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
     self.lead_distance_bars_last = None
@@ -209,12 +220,27 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     if self.flags.meb_or_mqb_evo and CS.out_ic.radarDisableFailed:
       self.meb_long_state.reset()
     
+    # The radar's own ACC faults when TSK regulates while it stays in standby for 0.2 s. It engages 0.01-0.03 s after a
+    # SET/RES press on the move, but up to 0.23 s after Travel Assist and later still at a stop (2026-10-27 14:19:40,
+    # route 223: TSK at +0.08 s, radar still standby, fault at +0.28 s). Keep openpilot's ACC_18 in standby after it
+    # engages until the radar has engaged, for at most RADAR_ENGAGE_WAIT_FRAMES.
+    radar_acc_healthy = CS.radar_acc_status is not None and CS.radar_acc_status not in RADAR_ACC_FAULTED
+    if not CC.enabled or not radar_acc_healthy or CS.radar_acc_status in RADAR_ACC_ENGAGED or \
+       self.radar_engage_wait_frames >= RADAR_ENGAGE_WAIT_FRAMES:
+      self.radar_engage_wait_frames = 0
+    elif not self.enabled_prev or self.radar_engage_wait_frames:
+      self.radar_engage_wait_frames += 1
+    self.enabled_prev = CC.enabled
+    long_cc = CC if not self.radar_engage_wait_frames else SimpleNamespace(
+      enabled=False, longActive=False, cruiseControl=CC.cruiseControl, actuators=CC.actuators,
+    )
+
     if self.frame % self.CCP.ACC_CONTROL_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.out_ic.radarDisableFailed:
       stopping = actuators.longControlState == LongCtrlState.stopping
         
       if self.flags.meb_or_mqb_evo:
         accel_request = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
-        accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held = self.meb_long_state.update(CS, CC, accel_request)
+        accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held = self.meb_long_state.update(CS, long_cc, accel_request)
 
         critical_state = hud_control.visualAlert == VisualAlert.fcw
         if CC_IC.longComfortMode:
@@ -371,6 +397,14 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
     # **** Stock ACC Button Controls **************************************** #
 
+    # The radar engaged its own ACC but openpilot did not (a no entry). Cancel it, as the driver would, before its
+    # comparison with TSK faults it for the rest of the drive.
+    if CS.radar_acc_status in RADAR_ACC_ENGAGED and not CC.enabled:
+      self.radar_acc_unfollowed_frames += 1
+    else:
+      self.radar_acc_unfollowed_frames = 0
+    radar_acc_cancel = self.radar_acc_unfollowed_frames > RADAR_ACC_CANCEL_FRAMES
+
     gra_send_ready = CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
     if gra_send_ready:
       bus_send = self.CAN.pt if self.flags.pq else self.CAN.ext
@@ -380,6 +414,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                                cancel=CC.cruiseControl.cancel, resume=CC.cruiseControl.resume))
         else: # Intelligent Cruise Button Management
           can_sends.extend(IntelligentCruiseButtonManagementInterface.update(self, CC_SP, CS, self.packer_pt, self.frame, bus_send))
+      elif radar_acc_cancel:
+        can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, bus_send, CS.gra_stock_values, cancel=True))
 
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
