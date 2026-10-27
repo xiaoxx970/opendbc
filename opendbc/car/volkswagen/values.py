@@ -128,6 +128,7 @@ class CarControllerParams:
       self.STEER_OVERRIDE_FRAMES = 13               # HCA_03 frames (0.26 s) of same-direction driver torque to start an override
       self.STEER_OVERRIDE_RELEASE_TORQUE = 30       # Driver torque 0.3 Nm, below this counts as let go
       self.STEER_OVERRIDE_RELEASE_FRAMES = 10       # HCA_03 frames (0.2 s) let go before openpilot takes back
+      self.STEER_OVERRIDE_SPEED_BP = [30. * CV.KPH_TO_MS, 50. * CV.KPH_TO_MS]  # full handover below, original behaviour above
       
       self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
       self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)

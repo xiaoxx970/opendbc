@@ -139,9 +139,14 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
             self.override_release_frames = 0
           if self.override_release_frames >= self.CCP.STEER_OVERRIDE_RELEASE_FRAMES:
             self.override_active = False
+          # only low speed needs it: above STEER_OVERRIDE_SPEED_BP the EPS already feels like stock, so fade back to the
+          # original behaviour there and leave highway steering exactly as before
+          override_weight = float(np.interp(CS.out.vEgo, self.CCP.STEER_OVERRIDE_SPEED_BP, [1., 0.]))
+          if override_weight <= 0.:
+            self.override_active = False
           sustained_override = self.override_active
           if sustained_override:
-            self.override_curvature_error = self.CCP.STEER_OVERRIDE_CURVATURE_ERROR
+            self.override_curvature_error = self.CCP.STEER_OVERRIDE_CURVATURE_ERROR / override_weight
           else:
             # widen back out gradually after release so the command doesn't snap back to the model's curvature
             self.override_curvature_error += self.CCP.STEER_OVERRIDE_CURVATURE_RELAX
@@ -156,11 +161,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+          target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                                                          [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           if sustained_override:
-            target_power_driver = self.CCP.STEERING_POWER_MIN
-          else:
-            target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
-                                                                            [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+            target_power_driver = int(round(target_power_driver + (self.CCP.STEERING_POWER_MIN - target_power_driver) * override_weight))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
           steering_power = min(max(target_power, min_power), max_power)
 
