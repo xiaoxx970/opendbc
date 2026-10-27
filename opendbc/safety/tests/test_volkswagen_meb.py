@@ -214,9 +214,9 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     values = {"EPS_Lenkmoment": abs(torque), "EPS_VZ_Lenkmoment": torque < 0}
     return self.packer.make_can_msg_safety("LH_EPS_03", 0, values)
 
-  def _button_msg(self, cancel=0, resume=0, _set=0, main=0, main_momentary=1, bus=2):
+  def _button_msg(self, cancel=0, resume=0, _set=0, main=0, main_momentary=1, bus=2, travel_assist=0):
     values = {"GRA_Abbrechen": cancel, "GRA_Tip_Setzen": _set, "GRA_Tip_Wiederaufnahme": resume,
-              "GRA_Hauptschalter": main, "GRA_Typ_Hauptschalter": main_momentary}
+              "GRA_Hauptschalter": main, "GRA_Typ_Hauptschalter": main_momentary, "GRA_TravelAssist": travel_assist}
     return self.packer.make_can_msg_safety("GRA_ACC_01", bus, values)
 
   def test_curvature_measurements(self):
@@ -416,17 +416,25 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
     pass
 
   def test_set_and_resume_buttons(self):
-    for button in ["set", "resume"]:
-      # ACC main switch must be on, engage on falling edge
+    for button in ["_set", "resume", "travel_assist"]:
+      # ACC main switch must be on, engage on rising edge like the radar's own ACC
       self.safety.set_controls_allowed(0)
       self._rx(self._tsk_status_msg(False, main_switch=False))
-      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=0))
+      self._rx(self._button_msg(bus=0))
+      self._rx(self._button_msg(**{button: 1}, bus=0))
       self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on {button} with main switch off")
       self._rx(self._tsk_status_msg(False, main_switch=True))
-      self._rx(self._button_msg(_set=(button == "set"), resume=(button == "resume"), bus=0))
-      self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on {button} rising edge")
       self._rx(self._button_msg(bus=0))
-      self.assertTrue(self.safety.get_controls_allowed(), f"controls not allowed on {button} falling edge")
+      self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on {button} falling edge")
+      self._rx(self._button_msg(**{button: 1}, bus=0))
+      self.assertTrue(self.safety.get_controls_allowed(), f"controls not allowed on {button} rising edge")
+
+      # a key held through a cancel does not engage again
+      self._rx(self._button_msg(**{button: 1}, cancel=1, bus=0))
+      self.assertFalse(self.safety.get_controls_allowed())
+      self._rx(self._button_msg(**{button: 1}, bus=0))
+      self._rx(self._button_msg(bus=0))
+      self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on held {button}")
 
   def test_cancel_button(self):
     # Disable on rising edge of cancel button

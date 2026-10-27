@@ -2,6 +2,7 @@ from collections import deque
 
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
+from opendbc.car.carlog import carlog
 from opendbc.car.interfaces import CarStateBase
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.volkswagen.values import DBC, CanBus, NetworkLocation, TransmissionType, GearShifter, \
@@ -15,6 +16,12 @@ ButtonType = structs.CarState.ButtonEvent.Type
 MAX_LEAD_DISTANCE = 150  # ACC_19 Lead_Distance* signal range in m
 NEIGHBOUR_MIN_LAT_OFFSET = 1.0  # m, side objects closer to our axis are not drawn as side cars
 RADAR_ACC_HUD_TIMEOUT_FRAMES = 25  # the radar sends ACC_19 every 60 ms: drop its values after four missed frames
+RADAR_ACC_STATUS_TIMEOUT_FRAMES = 10  # the radar sends ACC_18 every 20 ms
+# The radar's own ACC_18.ACC_Status_ACC: 2 standby, 5 shut-off reaction, 6 reversible and 7 irreversible fault (until ignition off)
+RADAR_ACC_ENGAGED = (3, 4)  # regulating, driver override
+RADAR_ACC_SHUTOFF = 5
+RADAR_ACC_FAULTED = (6, 7)
+ENGAGE_BUTTONS = (ButtonType.setCruise, ButtonType.resumeCruise)
 
 
 def radar_objects_available(CP) -> bool:
@@ -69,6 +76,11 @@ class CarState(CarStateBase, MadsCarState):
     self.radar_acc_hud = None  # the radar's latest ACC_19 values while it keeps sending them, else None
     self.radar_acc_hud_nanos = 0
     self.radar_acc_hud_frame = 0
+    self.radar_acc_status = None  # the radar's own ACC_Status_ACC while it keeps sending ACC_18, else None
+    self.radar_acc_status_nanos = 0
+    self.radar_acc_status_frame = 0
+    self.travel_assist_button = False
+    self.engage_button_enable = False
 
   @staticmethod
   def parse_neighbour_leads(radar_values) -> tuple[float, float]:
@@ -101,7 +113,31 @@ class CarState(CarStateBase, MadsCarState):
     fresh = nanos != 0 and self.frame - self.radar_acc_hud_frame < RADAR_ACC_HUD_TIMEOUT_FRAMES
     self.radar_acc_hud = radar_cp.vl["ACC_19"] if fresh else None
 
+  def update_radar_acc_status(self, radar_cp):
+    # The radar keeps running its own ACC behind openpilot and compares it with TSK, which follows openpilot's ACC_18.
+    # When they disagree for 0.2-0.4 s it faults its ACC until ignition off, invisible to the car.
+    value = int(radar_cp.vl["ACC_18"]["ACC_Status_ACC"])
+    nanos = radar_cp.ts_nanos["ACC_18"]["ACC_Status_ACC"]
+    if nanos != self.radar_acc_status_nanos:
+      self.radar_acc_status_nanos = nanos
+      self.radar_acc_status_frame = self.frame
+    fresh = nanos != 0 and self.frame - self.radar_acc_status_frame < RADAR_ACC_STATUS_TIMEOUT_FRAMES
+    status = value if fresh else None
+    if status != self.radar_acc_status and (status == RADAR_ACC_SHUTOFF or status in RADAR_ACC_FAULTED):
+      carlog.warning({"event": "radar ACC status", "status": status, "prev": self.radar_acc_status})
+    self.radar_acc_status = status
+
+  def update_engage_buttons(self, buttonEvents: list[structs.CarState.ButtonEvent], travel_assist_button: bool) -> bool:
+    # The radar engages its own ACC on the press of SET, RES or Travel Assist, unless braking on the move, and faults
+    # it when TSK does not follow within 0.4 s. Engage on the press too: a press while braking on the move ends in a
+    # "Pedal Pressed" no entry, like the radar's refusal, and the later release no longer engages behind its back.
+    travel_assist_pressed = travel_assist_button and not self.travel_assist_button
+    self.travel_assist_button = travel_assist_button
+    return travel_assist_pressed or any(b.pressed and b.type in ENGAGE_BUTTONS for b in buttonEvents)
+
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
+    if self.radar_acc_hud_available:
+      return self.engage_button_enable
     if not self.CP.pcmCruise:
       for b in buttonEvents:
         # Enable OP long on falling edge of enable buttons
@@ -420,6 +456,9 @@ class CarState(CarStateBase, MadsCarState):
     ret.stockAeb = bool(ext_cp.vl["AWV_03"]["AEB_Active"]) if not self.flags.disable_radar else False
     if self.radar_acc_hud_available:
       self.update_radar_acc_hud(ext_cp)
+      self.update_radar_acc_status(ext_cp)
+      ret_ic.radarAccStatus = self.radar_acc_status if self.radar_acc_status is not None else 0
+      ret_ic.radarAccFault = self.radar_acc_status in RADAR_ACC_FAULTED
 
     self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"] if not self.flags.disable_radar else 2 # 2: acc stop and go
     # The radar keeps planning while openpilot replaces its ACC_18, and asks for an engine start when
@@ -547,6 +586,9 @@ class CarState(CarStateBase, MadsCarState):
     buttons = self.CCP.BUTTONS_ALT if main_cruise_latching else self.CCP.BUTTONS
     ret.buttonEvents = self.create_button_events(pt_cp, buttons)
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
+    if self.radar_acc_hud_available:
+      # The Travel Assist key engages the radar's own ACC like SET does, so it engages openpilot fully too
+      self.engage_button_enable = self.update_engage_buttons(ret.buttonEvents, bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"]))
     
     # Additional safety checks performed in CarInterface.
     ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"]) # this is also true for ESC Sport mode

@@ -46,6 +46,8 @@ static uint32_t volkswagen_meb_hca_sent_ts = 0U;
 static bool volkswagen_meb_ldw_sent = false;
 static uint32_t volkswagen_meb_ldw_sent_ts = 0U;
 
+static bool volkswagen_meb_travel_assist_button_prev = false;
+
 
 #define VW_MEB_COMMON_RX_CHECKS                                                                     \
   {.msg = {{MSG_LH_EPS_03, 0, 8, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
@@ -216,6 +218,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   volkswagen_meb_hca_sent_ts = 0U;
   volkswagen_meb_ldw_sent = false;
   volkswagen_meb_ldw_sent_ts = 0U;
+  volkswagen_meb_travel_assist_button_prev = false;
 
   volkswagen_alt_crc_variant_1 = GET_FLAG(param, FLAG_VOLKSWAGEN_ALT_CRC_VARIANT_1);
 
@@ -317,17 +320,22 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
     // update cruise buttons
     if (msg->addr == MSG_GRA_ACC_01) {
-      // If using openpilot longitudinal, enter controls on falling edge of Set or Resume with main switch on
+      // If using openpilot longitudinal, enter controls on rising edge of Set, Resume or Travel Assist with main switch on.
+      // The radar's own ACC engages on the press and faults when TSK does not follow it within 0.4 s.
       // Signal: GRA_ACC_01.GRA_Tip_Setzen
       // Signal: GRA_ACC_01.GRA_Tip_Wiederaufnahme
+      // Signal: GRA_ACC_01.GRA_TravelAssist
       if (volkswagen_longitudinal) {
         bool set_button = GET_BIT(msg, 16U);
         bool resume_button = GET_BIT(msg, 19U);
-        if ((volkswagen_set_button_prev && !set_button) || (volkswagen_resume_button_prev && !resume_button)) {
+        bool travel_assist_button = GET_BIT(msg, 30U);
+        if ((set_button && !volkswagen_set_button_prev) || (resume_button && !volkswagen_resume_button_prev) ||
+            (travel_assist_button && !volkswagen_meb_travel_assist_button_prev)) {
           controls_allowed = acc_main_on;
         }
         volkswagen_set_button_prev = set_button;
         volkswagen_resume_button_prev = resume_button;
+        volkswagen_meb_travel_assist_button_prev = travel_assist_button;
       }
       // Always exit controls on rising edge of Cancel
       // Signal: GRA_ACC_01.GRA_Abbrechen

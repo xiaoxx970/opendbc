@@ -6,6 +6,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.carstate import RADAR_ACC_ENGAGED
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlagBits
 from opendbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit
 
@@ -24,6 +25,9 @@ DISTANCE_POPUP_FRAMES = 200
 HCA_STANDBY_HIGH_RATE_FRAMES = 10
 HCA_STANDBY_FRAMES = 15
 DISTANCE_STEP_BUTTONS = (ButtonType.accelCruise, ButtonType.decelCruise)
+# The radar faults its own ACC when it regulates while TSK stays in standby for more than 0.4 s. Both engage on the press,
+# openpilot a few frames later: cancel the radar when openpilot has not followed by now.
+RADAR_ACC_CANCEL_FRAMES = 15
 
 
 class HCAMitigation:
@@ -85,6 +89,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
     self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
     self.gra_acc_counter_last = None
+    self.radar_acc_unfollowed_frames = 0
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
     self.lead_distance_bars_last = None
@@ -416,6 +421,14 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
     # **** Stock ACC Button Controls **************************************** #
 
+    # The radar engaged its own ACC but openpilot did not (a no entry). Cancel it, as the driver would, before its
+    # comparison with TSK faults it for the rest of the drive.
+    if CS.radar_acc_status in RADAR_ACC_ENGAGED and not CC.enabled:
+      self.radar_acc_unfollowed_frames += 1
+    else:
+      self.radar_acc_unfollowed_frames = 0
+    radar_acc_cancel = self.radar_acc_unfollowed_frames > RADAR_ACC_CANCEL_FRAMES
+
     gra_send_ready = CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
     if gra_send_ready:
       bus_send = self.CAN.pt if self.flags.pq else self.CAN.ext
@@ -425,6 +438,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                                cancel=CC.cruiseControl.cancel, resume=CC.cruiseControl.resume))
         else: # Intelligent Cruise Button Management
           can_sends.extend(IntelligentCruiseButtonManagementInterface.update(self, CC_SP, CS, self.packer_pt, self.frame, bus_send))
+      elif radar_acc_cancel:
+        can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, bus_send, CS.gra_stock_values, cancel=True))
 
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
