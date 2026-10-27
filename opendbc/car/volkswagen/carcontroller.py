@@ -32,6 +32,10 @@ RADAR_ACC_CANCEL_FRAMES = 15
 # openpilot's ACC waits this long after engaging for the radar's own ACC to engage too, then regulates anyway: the radar
 # engages 0.01-0.23 s after the press, and an ACC openpilot can use beats keeping the radar's engine restart
 RADAR_ENGAGE_WAIT_FRAMES = 50
+# The stock camera's TA_01 after a Travel Assist press that engages (stock drives 08-08, 08-24): key press flag from
+# +0.12 to +0.7 s, enable request from +0.3 to +1.35 s. Inferred to be what shows "Travel Assist on" on the cluster.
+TRAVEL_ASSIST_PRESSED_FRAMES = (12, 70)
+TRAVEL_ASSIST_REQUEST_FRAMES = (30, 135)
 
 
 class HCAMitigation:
@@ -101,6 +105,15 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.speed_limit_changed_timer = -400  # never treat boot as a freshly detected speed limit
     self.radar_disabled_warning_timer = 0
     self.hide_ea_error = False
+
+  @staticmethod
+  def travel_assist_notify(CS, CC) -> tuple[bool, bool]:
+    # replay the stock camera's TA_01 after a Travel Assist press openpilot engaged on
+    if not CC.enabled or CS.travel_assist_press_frame is None:
+      return False, False
+    frames = CS.frame - CS.travel_assist_press_frame
+    return (TRAVEL_ASSIST_PRESSED_FRAMES[0] <= frames < TRAVEL_ASSIST_PRESSED_FRAMES[1],
+            TRAVEL_ASSIST_REQUEST_FRAMES[0] <= frames < TRAVEL_ASSIST_REQUEST_FRAMES[1])
 
   def update(self, CC, CC_SP, CC_IC, CS, now_nanos):
     actuators = CC.actuators
@@ -259,7 +272,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                            self.long_limit_control.get_lower_limit() if CC_IC.longComfortMode else 0.,
                                                            accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available,
-                                                           self.meb_long_state.start_stop_info))
+                                                           self.meb_long_state.start_stop_info,
+                                                           self.travel_assist_notify(CS, CC)))
 
       else:
         starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < 0.25)

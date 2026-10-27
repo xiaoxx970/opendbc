@@ -81,6 +81,7 @@ class CarState(CarStateBase, MadsCarState):
     self.radar_acc_status_frame = 0
     self.travel_assist_button = False
     self.engage_button_enable = False
+    self.travel_assist_press_frame = None
 
   @staticmethod
   def parse_neighbour_leads(radar_values) -> tuple[float, float]:
@@ -133,6 +134,8 @@ class CarState(CarStateBase, MadsCarState):
     # "Pedal Pressed" no entry, like the radar's refusal, and the later release no longer engages behind its back.
     travel_assist_pressed = travel_assist_button and not self.travel_assist_button
     self.travel_assist_button = travel_assist_button
+    if travel_assist_pressed:
+      self.travel_assist_press_frame = self.frame
     return travel_assist_pressed or any(b.pressed and b.type in ENGAGE_BUTTONS for b in buttonEvents)
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):

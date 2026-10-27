@@ -331,7 +331,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
 
 def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk, lower_jerk, upper_control_limit, lower_control_limit,
                              accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held, speed,
-                             travel_assist_available, start_stop_info=None):
+                             travel_assist_available, start_stop_info=None, travel_assist_notify=(False, False)):
   # active longitudinal control disables one pedal driving (regen mode) while using overriding mechnism
   # error mitigation when stopping or stopped: (newer gen cars can be very sensitive)
   # - send 0 m stopping distance for cars in kind of parameterized stopping mode (stopping accel -0.2 seen for those cars)
@@ -377,9 +377,13 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
 
   if travel_assist_available:
     # satisfy car to prevent errors when pressing Travel Assist Button
+    # travel_assist_notify: the stock camera's key press flag and enable request after a Travel Assist press, which
+    # (inferred from stock drives) make the cluster show "Travel Assist on"
+    pressed, enable_request = travel_assist_notify
     values_ta = {
+       "Travel_Assist_Pressed":   int(pressed),
        "Travel_Assist_Status":    4 if acc_enabled else 2,
-       "Travel_Assist_Request":   0,
+       "Travel_Assist_Request":   4 if enable_request else 0,
        "Travel_Assist_Available": 1,
     }
 
