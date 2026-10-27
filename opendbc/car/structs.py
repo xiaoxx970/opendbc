@@ -181,6 +181,9 @@ class CarStateIC:
   rainAmount: float = auto_field()       # rain sensor amount, 0-100 %, smoothed by the sensor
   rainWiperRequest: int = auto_field()   # wiper speed the rain sensor asks for, 0 (none) - 7
   wiperSwitch: int = auto_field()        # wiper stalk: 0 off, 1 interval/auto, 2 stage 1, 3 stage 2
+  # the radar's own ACC on the gateway harness, which openpilot longitudinal replaces towards the car
+  radarAccStatus: int = auto_field()   # its ACC_18.ACC_Status_ACC: 2 standby, 3 regulating, 4 override, 5 shut-off, 6/7 fault
+  radarAccFault: bool = auto_field()   # its ACC has faulted, for the rest of the drive at 7
 
   @auto_dataclass
   class BatteryDetails:
