@@ -3,11 +3,11 @@ import re
 import unittest
 from types import SimpleNamespace
 
-from opendbc.can import CANPacker
+from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen import mebcan
-from opendbc.car.volkswagen.carcontroller import HCAMitigation, RADAR_ACC_CANCEL_FRAMES
+from opendbc.car.volkswagen.carcontroller import HCAMitigation, RADAR_ACC_CANCEL_FRAMES, RADAR_ENGAGE_WAIT_FRAMES
 from opendbc.car.volkswagen.carstate import CarState, RADAR_ACC_HUD_TIMEOUT_FRAMES, RADAR_ACC_STATUS_TIMEOUT_FRAMES
 from opendbc.car.volkswagen.interface import CarInterface
 from opendbc.car.volkswagen.values import CAR, DBC, CanBus, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
@@ -204,6 +204,7 @@ class TestEngageButtons(unittest.TestCase):
     self.t += 1
     wheels = dict.fromkeys(("VL_Radgeschw", "VR_Radgeschw", "HL_Radgeschw", "HR_Radgeschw"), speed)
     msgs = [self.packer.make_can_msg("GRA_ACC_01", CanBus(self.ci.CP).pt, buttons),
+            self.packer.make_can_msg("Motor_51", CanBus(self.ci.CP).pt, {"TSK_Status": 2}),
             self.packer.make_can_msg("Motor_14", CanBus(self.ci.CP).pt, {"MO_Fahrer_bremst": brake}),
             self.packer.make_can_msg("ESC_51", CanBus(self.ci.CP).pt, wheels)]
     if radar_status is not None:
@@ -273,6 +274,45 @@ class TestEngageButtons(unittest.TestCase):
     self.assertTrue(sent[-1])
     # not once the radar's ACC has faulted
     self.assertFalse(any(cancel_sent(7) for _ in range(RADAR_ACC_CANCEL_FRAMES + 2)))
+
+
+  def test_acc_waits_for_the_radar(self):
+    # 2026-10-27 route 223: Travel Assist at a stop, TSK regulated at +0.08 s, the radar was still in standby and faulted
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    acc_18 = self.packer.dbc.name_to_msg["ACC_18"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_18", float("nan"))], CanBus(self.ci.CP).pt)
+
+    def sent_status(radar_status, enabled=True, **buttons):
+      self.step(radar_status=radar_status, **buttons)
+      CC.enabled = CC.longActive = enabled
+      _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+      msgs = [m for m in sends if m[0] == acc_18]
+      if msgs:
+        parser.update([(self.t * 10_000_000, msgs)])
+      return parser.vl["ACC_18"]["ACC_Status_ACC"]
+
+    for _ in range(5):
+      sent_status(2, enabled=False)
+    statuses = [sent_status(2, GRA_TravelAssist=1)] + [sent_status(2, GRA_TravelAssist=1) for _ in range(10)]
+    self.assertTrue(all(st == 2 for st in statuses), statuses)  # standby while the radar has not engaged
+    for _ in range(3):
+      sent_status(3)
+    self.assertEqual(sent_status(3), 3)
+    # once engaged together, the radar's own transitions do not hold openpilot back
+    self.assertEqual(sent_status(4), 3)
+
+    # the radar never follows: openpilot regulates anyway after the wait rather than leave the driver without ACC
+    for _ in range(5):
+      sent_status(2, enabled=False)
+    statuses = [sent_status(2, GRA_Tip_Wiederaufnahme=1)] + [sent_status(2) for _ in range(RADAR_ENGAGE_WAIT_FRAMES + 5)]
+    self.assertEqual(statuses.index(3), RADAR_ENGAGE_WAIT_FRAMES)
+    self.assertTrue(all(st == 3 for st in statuses[RADAR_ENGAGE_WAIT_FRAMES:]))
+
+    # no wait once the radar's ACC has faulted
+    for _ in range(5):
+      sent_status(7, enabled=False)
+    sent_status(7, GRA_Tip_Wiederaufnahme=1)
+    self.assertEqual(sent_status(7), 3)
 
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):

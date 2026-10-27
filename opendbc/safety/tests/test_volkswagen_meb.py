@@ -375,7 +375,7 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
   TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0],
              [MSG_MEB_ACC_01, 0], [MSG_ACC_18, 0], [MSG_TA_01, 0],
              [MSG_EA_01, 0], [MSG_EA_02, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2],
-             [MSG_PSD_04, 2], [MSG_PSD_05, 2], [MSG_PSD_06, 2]]
+             [MSG_PSD_04, 2], [MSG_PSD_05, 2], [MSG_PSD_06, 2], [MSG_GRA_ACC_01, 2]]
   FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01],
                            2: [MSG_EA_02, MSG_MEB_ACC_01, MSG_ACC_18, MSG_TA_01]}
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02, MSG_EA_02, MSG_TA_01, MSG_MEB_ACC_01, MSG_ACC_18),
@@ -435,6 +435,14 @@ class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
       self._rx(self._button_msg(**{button: 1}, bus=0))
       self._rx(self._button_msg(bus=0))
       self.assertFalse(self.safety.get_controls_allowed(), f"controls allowed on held {button}")
+
+  def test_radar_cancel_only(self):
+    # the buttons only go to the radar to cancel its own ACC, never to set or resume it
+    for controls_allowed in (False, True):
+      self.safety.set_controls_allowed(controls_allowed)
+      self.assertTrue(self._tx(self._button_msg(cancel=1)))
+      self.assertFalse(self._tx(self._button_msg(resume=1)))
+      self.assertFalse(self._tx(self._button_msg(_set=1)))
 
   def test_cancel_button(self):
     # Disable on rising edge of cancel button

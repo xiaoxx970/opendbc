@@ -76,6 +76,7 @@ static bool volkswagen_meb_travel_assist_button_prev = false;
   {MSG_TA_01, 0, 8, .check_relay = true},                                              \
   {MSG_PSD_04, 2, 8, .check_relay = false}, {MSG_PSD_05, 2, 8, .check_relay = false},  \
   {MSG_PSD_06, 2, 8, .check_relay = false},                                            \
+  {MSG_GRA_ACC_01, 2, 8, .check_relay = false},                                        \
 
 #define VW_MEB_RADAR_TX_MSGS                        \
   {MSG_AWV_03, 0, 48, .check_relay = true},         \
@@ -453,8 +454,9 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   }
 
   // FORCE CANCEL: ensuring that only the cancel button press is sent when controls are off.
-  // This avoids unintended engagements while still allowing resume spam
-  if ((msg->addr == MSG_GRA_ACC_01) && !controls_allowed) {
+  // This avoids unintended engagements while still allowing resume spam. Under openpilot longitudinal the buttons
+  // only go to the radar, to cancel its own ACC when openpilot did not engage with it: never Set or Resume.
+  if ((msg->addr == MSG_GRA_ACC_01) && (!controls_allowed || volkswagen_longitudinal)) {
     // disallow resume and set: bits 16 and 19
     if ((msg->data[2] & 0x9U) != 0U) {
       tx = false;
