@@ -78,6 +78,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.steering_power_last = 0
     self.override_frames = 0
     self.override_sign = 0
+    self.override_active = False
+    self.override_release_frames = 0
     self.override_curvature_error = float('inf')
     self.accel_last = 0.
     self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if self.flags.meb_or_mqb_evo else None
@@ -120,14 +122,24 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
           steer_correction = CS.out_ic.steeringCurvature - CC.currentCurvature + CC_IC.rollCompensation if not self.flags.ford_car else 0.
           apply_curvature = actuators.curvature + steer_correction
           # Driver override, matched to the stock camera's handover. Lane change nudges are left alone, and both the
-          # clip and the faster power drop wait for a sustained press so bumps or a resting hand don't make openpilot let go.
+          # clip and the power handover wait for a sustained press so bumps or a resting hand don't make openpilot let go.
           driver_override = abs(CS.out.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE and \
                             not (CS.out.leftBlinker or CS.out.rightBlinker)
           # bumps kick the wheel back and forth, a real override pushes one way
           override_sign = int(np.sign(CS.out.steeringTorque))
           self.override_frames = self.override_frames + 1 if driver_override and override_sign == self.override_sign else int(driver_override)
           self.override_sign = override_sign
-          sustained_override = self.override_frames >= self.CCP.STEER_OVERRIDE_FRAMES
+          # hand back only once the driver has clearly let go: with the EPS backed off their torque settles
+          # just under the entry threshold, and exiting there makes the EPS grab and release about once a second
+          if self.override_frames >= self.CCP.STEER_OVERRIDE_FRAMES:
+            self.override_active = True
+          if abs(CS.out.steeringTorque) < self.CCP.STEER_OVERRIDE_RELEASE_TORQUE:
+            self.override_release_frames += 1
+          else:
+            self.override_release_frames = 0
+          if self.override_release_frames >= self.CCP.STEER_OVERRIDE_RELEASE_FRAMES:
+            self.override_active = False
+          sustained_override = self.override_active
           if sustained_override:
             self.override_curvature_error = self.CCP.STEER_OVERRIDE_CURVATURE_ERROR
           else:
@@ -144,14 +156,17 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
-          driver_max = self.CCP.STEER_DRIVER_RELEASE if sustained_override else self.CCP.STEER_DRIVER_MAX
-          target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, driver_max],
-                                                                          [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+          if sustained_override:
+            target_power_driver = self.CCP.STEERING_POWER_MIN
+          else:
+            target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                                                            [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
           steering_power = min(max(target_power, min_power), max_power)
 
         else:
           self.override_frames = 0
+          self.override_active = False
           self.override_curvature_error = float('inf')
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
