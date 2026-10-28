@@ -381,7 +381,7 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
     # (inferred from stock drives) make the cluster show "Travel Assist on"
     pressed, enable_request = travel_assist_notify
     values_ta = {
-       "Travel_Assist_Pressed":   int(pressed),
+       "Travel_Assist_Press_Ack":   int(pressed),
        "Travel_Assist_Status":    4 if acc_enabled else 2,
        "Travel_Assist_Request":   4 if enable_request else 0,
        "Travel_Assist_Available": 1,

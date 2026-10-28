@@ -327,7 +327,7 @@ class TestEngageButtons(unittest.TestCase):
       msgs = [m for m in sends if m[0] == ta_01]
       if msgs:
         parser.update([(self.t * 10_000_000, msgs)])
-      return int(parser.vl["TA_01"]["Travel_Assist_Pressed"]), int(parser.vl["TA_01"]["Travel_Assist_Request"])
+      return int(parser.vl["TA_01"]["Travel_Assist_Press_Ack"]), int(parser.vl["TA_01"]["Travel_Assist_Request"])
 
     for _ in range(5):
       sent(enabled=False)
