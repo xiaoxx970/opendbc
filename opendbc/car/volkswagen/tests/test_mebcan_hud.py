@@ -5,7 +5,7 @@ from opendbc.car import Bus
 from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, DBC
 from opendbc.car.volkswagen.mebcan import create_acc_hud_control, RADAR_HUD_WARNING_SIGNALS
-from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_ENABLED, LDW_LINE_ACTIVE, LDW_LINE_NONE, LDW_LINE_PASSIVE, \
+from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_DISABLED, ACC_HUD_ENABLED, LDW_LINE_ACTIVE, LDW_LINE_NONE, LDW_LINE_PASSIVE, \
   get_acc_hud_event, get_lane_line_display
 
 
@@ -135,6 +135,19 @@ class TestRadarHudWarning(unittest.TestCase):
         for fcw_alert in (False, True):
           self.assertEqual(self._values(ACC_HUD_ACTIVE, fcw_alert, radar_hud), self._values(ACC_HUD_ACTIVE, fcw_alert, None))
 
+
+  def test_radar_info_text_while_openpilot_is_not_engaged(self):
+    # 0x14 "ACC not started": SET, RES or Travel Assist while ACC is off; 0x05/0x0f: cannot engage at a stop/braking
+    for acc_control, info, expected in ((ACC_HUD_DISABLED, 0x14, (0x14, 1)), (ACC_HUD_ENABLED, 0x05, (0x05, 1)),
+                                        (ACC_HUD_ENABLED, 0x0f, (0x0f, 1)), (ACC_HUD_DISABLED, 0, (0, 3)),
+                                        (ACC_HUD_ENABLED, 0, (0, 3)),
+                                        # not its fault text: openpilot keeps regulating after a radar fault
+                                        (ACC_HUD_DISABLED, 0x02, (0, 3)),
+                                        # not once openpilot engaged anyway
+                                        (ACC_HUD_ACTIVE, 0x05, (0, 2))):
+      with self.subTest(acc_control=acc_control, info=info):
+        v = self._values(acc_control, False, {**self.RADAR_FOLLOWING, "ACC_Display_Prio": 1, "ACC_Texte_Info": info})
+        self.assertEqual((v["ACC_Texte_Info"], v["ACC_Display_Prio"]), expected)
 
 if __name__ == "__main__":
   unittest.main()
