@@ -320,18 +320,13 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     else:
       self.start_stop_info = 1
 
-    # The stock car restarts an auto stopped engine when the lead pulls away, engaged or not, which warns
-    # the driver and makes the launch smoother. The radar still computes that request behind openpilot,
-    # but its ACC_18 is blocked, so forward it. Only at a physical stop: a start request never moves the car.
-    if self.mqb_evo and CS.radar_engine_start_request and CS.out.standstill:
-      self.start_stop_info = 2
-
     return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held
 
 
 def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk, lower_jerk, upper_control_limit, lower_control_limit,
                              accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held, speed,
-                             travel_assist_available, start_stop_info=None, travel_assist_notify=(False, False)):
+                             travel_assist_available, start_stop_info=None, travel_assist_notify=(False, False),
+                             acc_stock_values=None):
   # active longitudinal control disables one pedal driving (regen mode) while using overriding mechnism
   # error mitigation when stopping or stopped: (newer gen cars can be very sensitive)
   # - send 0 m stopping distance for cars in kind of parameterized stopping mode (stopping accel -0.2 seen for those cars)
@@ -372,6 +367,10 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
     values.update({
       "SET_ME_0x2FE": 0x2FE, # unclear if neccessary
     })
+
+  # Like stock, restart an auto stopped engine when the radar asks for it as the lead pulls away, engaged or not
+  if acc_stock_values and acc_stock_values["ACC_StartStopp_Info"] == 2:
+    values["ACC_StartStopp_Info"] = 2
 
   commands.append(packer.make_can_msg("ACC_18", bus, values))
 

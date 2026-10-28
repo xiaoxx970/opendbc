@@ -64,7 +64,6 @@ class CarState(CarStateBase, MadsCarState):
     self.force_rhd_for_bsm = False
     self.acc_type = 0
     self.engine_on = True
-    self.radar_engine_start_request = False
     self.hca_status_last = None
     self.hca_status_fluct_counter = 0
     self.hca_status_fluctuation_frames = deque()
@@ -464,9 +463,7 @@ class CarState(CarStateBase, MadsCarState):
       ret_ic.radarAccFault = self.radar_acc_status in RADAR_ACC_FAULTED
 
     self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"] if not self.flags.disable_radar else 2 # 2: acc stop and go
-    # The radar keeps planning while openpilot replaces its ACC_18, and asks for an engine start when
-    # the lead pulls away from a stop, with or without ACC. openpilot passes that on (see mebcan).
-    self.radar_engine_start_request = not self.flags.disable_radar and ext_cp.vl["ACC_18"]["ACC_StartStopp_Info"] == 2
+    self.acc_stock_values = ext_cp.vl["ACC_18"] if not self.flags.disable_radar else {}
     if self.flags.mqb_evo:
       # ESC_50.Standstill has never read 1 on a Golf 8, not once in thousands of frames at zero wheel speed. That
       # left the long state machine's drive-off latch dead: the hold confirmation drops as soon as the ESP starts
