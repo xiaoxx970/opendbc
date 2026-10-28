@@ -22,20 +22,14 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.acc_type = 0
     self.travel_assist_available = False
-    # Steering wheel Travel Assist button (GRA_ACC_01.GRA_TravelAssist), unrelated to travel_assist_available from the camera's TA_01
-    self.travel_assist_button_prev = False
-    self.travel_assist_released = False
-    self.travel_assist_press_frame = None
     self.curvature_meas = 0.
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
       for b in buttonEvents:
         # Enable OP long on falling edge of enable buttons
-        if b.type in (ButtonType.setCruise, ButtonType.resumeCruise) and not b.pressed:
+        if b.type in (ButtonType.setCruise, ButtonType.resumeCruise, ButtonType.travelAssist) and not b.pressed:
           return True
-      # Travel Assist on MEB enables the same way, but has no ButtonEvent type
-      return self.travel_assist_released
     return False
 
   def create_button_events(self, pt_cp, buttons):
@@ -324,13 +318,9 @@ class CarState(CarStateBase):
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
     self.klr_stock_values = pt_cp.vl["KLR_01"] if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT else {}
+    self.ta_stock_values = cam_cp.vl["TA_01"]
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
-    travel_assist_button = bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"])
-    if travel_assist_button and not self.travel_assist_button_prev:
-      self.travel_assist_press_frame = self.frame
-    self.travel_assist_released = self.travel_assist_button_prev and not travel_assist_button
-    self.travel_assist_button_prev = travel_assist_button
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
 
     self.frame += 1

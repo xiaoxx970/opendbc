@@ -159,7 +159,7 @@ class MebLongStateMachine:
 
 
 def create_acc_accel_control(packer, bus, CCP, acc_type, acc_enabled, accel, acc_status, acc_hold_type,
-                             braking_to_stop, leaving_standstill, speed, travel_assist_available, travel_assist_text):
+                             braking_to_stop, leaving_standstill, speed, travel_assist_available, ta_stock_values):
   # active longitudinal control disables one pedal driving (regen mode) while using overriding mechanism
   # error mitigation when stopping or stopped: (newer gen cars can be very sensitive)
   # - send 0 m stopping distance for cars in kind of parameterized stopping mode (stopping accel -0.2 seen for those cars)
@@ -197,14 +197,15 @@ def create_acc_accel_control(packer, bus, CCP, acc_type, acc_enabled, accel, acc
 
   if travel_assist_available:
     # satisfy car to prevent errors when pressing Travel Assist Button
-    # after a Travel Assist press that engaged, send the stock press flag and enable request for the cluster's engage text
-    pressed, enable_request = travel_assist_text
     values_ta = {
-       "Travel_Assist_Pressed":   int(pressed),
        "Travel_Assist_Status":    4 if acc_enabled else 2,
-       "Travel_Assist_Request":   4 if enable_request else 0,
+       "Travel_Assist_Request":   0,
        "Travel_Assist_Available": 1,
     }
+    if ta_stock_values is not None:
+      # the camera's press flag and enable request, which show the cluster's engage text
+      values_ta["Travel_Assist_Pressed"] = ta_stock_values["Travel_Assist_Pressed"]
+      values_ta["Travel_Assist_Request"] = 4 if ta_stock_values["Travel_Assist_Request"] == 4 else 0
 
     commands.append(packer.make_can_msg("TA_01", bus, values_ta))
 

@@ -4,7 +4,7 @@ import unittest
 
 from opendbc.car import DT_CTRL
 from opendbc.car.structs import CarParams
-from opendbc.car.volkswagen.carcontroller import HCAMitigation, TravelAssistEngageText
+from opendbc.car.volkswagen.carcontroller import HCAMitigation
 from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
@@ -28,20 +28,6 @@ class TestVolkswagenHCAMitigation(unittest.TestCase):
         should_nudge = actuator_value != 0 and frame == self.STUCK_TORQUE_FRAMES
         expected_torque = actuator_value - (1, -1)[actuator_value < 0] if should_nudge else actuator_value
         assert hca_mitigation.update(actuator_value, actuator_value) == expected_torque, f"{frame=}"
-
-class TestVolkswagenTravelAssistEngageText(unittest.TestCase):
-  def test_engage_text(self):
-    """Press flag and enable request follow a Travel Assist press that engages, timed from the press, and nothing else."""
-    press, release = 100, 115  # openpilot engages on the release
-
-    def sent_frames(press_frame, engaged_before):
-      text = TravelAssistEngageText()
-      sends = [text.update(frame, press_frame if frame >= press else None, engaged_before or frame > release) for frame in range(300)]
-      return [frame for frame, s in enumerate(sends) if s[0]], [frame for frame, s in enumerate(sends) if s[1]]
-
-    assert sent_frames(press, engaged_before=False) == (list(range(release + 1, press + 70)), list(range(press + 30, press + 135)))
-    assert sent_frames(press, engaged_before=True) == ([], [])  # Travel Assist while engaged
-    assert sent_frames(None, engaged_before=False) == ([], [])  # Set
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
   def test_spare_part_fw_pattern(self):
