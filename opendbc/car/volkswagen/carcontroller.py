@@ -33,6 +33,31 @@ class HCAMitigation:
     return apply_torque
 
 
+class TravelAssistEngageText:
+  """
+  Replays the stock camera's TA_01 answer to a Travel Assist press that engages, which shows the cluster's engage text:
+    * Travel_Assist_Pressed from 0.12 to 0.7 s after the press
+    * Travel_Assist_Request enable from 0.3 to 1.35 s after the press
+  Like stock, a press while already engaged shows nothing.
+  """
+  PRESSED_FRAMES = (12, 70)
+  REQUEST_FRAMES = (30, 135)
+
+  def __init__(self):
+    self._press_frame_last = None
+    self._engage_press_frame = None
+
+  def update(self, frame, press_frame, enabled):
+    if press_frame != self._press_frame_last:
+      self._press_frame_last = press_frame
+      self._engage_press_frame = None if enabled else press_frame
+
+    if not enabled or self._engage_press_frame is None:
+      return False, False
+    frames = frame - self._engage_press_frame
+    return self.PRESSED_FRAMES[0] <= frames < self.PRESSED_FRAMES[1], self.REQUEST_FRAMES[0] <= frames < self.REQUEST_FRAMES[1]
+
+
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     super().__init__(dbc_names, CP)
@@ -43,6 +68,7 @@ class CarController(CarControllerBase):
 
     if CP.flags & VolkswagenFlags.MEB:
       self.meb_long_state = mebcan.MebLongStateMachine(self.CP, self.CCP)
+      self.travel_assist_engage_text = TravelAssistEngageText()
 
     if CP.flags & VolkswagenFlags.PQ:
       self.CCS = pqcan
@@ -139,9 +165,10 @@ class CarController(CarControllerBase):
         if self.CP.flags & VolkswagenFlags.MEB:
           accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
           accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = self.meb_long_state.update(CS, CC, accel)
+          travel_assist_text = self.travel_assist_engage_text.update(CS.frame, CS.travel_assist_press_frame, CC.enabled)
           can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CCP, CS.acc_type, CC.enabled,
                                                            accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill,
-                                                           CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available))
+                                                           CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available, travel_assist_text))
 
         else:
           stopping = actuators.longControlState == LongCtrlState.stopping

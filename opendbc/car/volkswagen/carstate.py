@@ -25,6 +25,7 @@ class CarState(CarStateBase):
     # Steering wheel Travel Assist button (GRA_ACC_01.GRA_TravelAssist), unrelated to travel_assist_available from the camera's TA_01
     self.travel_assist_button_prev = False
     self.travel_assist_released = False
+    self.travel_assist_press_frame = None
     self.curvature_meas = 0.
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
@@ -326,6 +327,8 @@ class CarState(CarStateBase):
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     travel_assist_button = bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"])
+    if travel_assist_button and not self.travel_assist_button_prev:
+      self.travel_assist_press_frame = self.frame
     self.travel_assist_released = self.travel_assist_button_prev and not travel_assist_button
     self.travel_assist_button_prev = travel_assist_button
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
