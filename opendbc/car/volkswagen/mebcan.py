@@ -204,7 +204,7 @@ def create_acc_accel_control(packer, bus, CCP, acc_type, acc_enabled, accel, acc
     }
     if ta_stock_values is not None:
       # the camera's press flag and enable request, which show the cluster's engage text
-      values_ta["Travel_Assist_Pressed"] = ta_stock_values["Travel_Assist_Pressed"]
+      values_ta["Travel_Assist_Press_Ack"] = ta_stock_values["Travel_Assist_Press_Ack"]
       values_ta["Travel_Assist_Request"] = 4 if ta_stock_values["Travel_Assist_Request"] == 4 else 0
 
     commands.append(packer.make_can_msg("TA_01", bus, values_ta))
