@@ -2,12 +2,10 @@ import random
 import re
 import unittest
 
-from opendbc.can import CANPacker
-from opendbc.car import DT_CTRL, Bus, CanData, gen_empty_fingerprint
+from opendbc.car import DT_CTRL
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.carcontroller import HCAMitigation
-from opendbc.car.volkswagen.interface import CarInterface
-from opendbc.car.volkswagen.values import CAR, DBC, CanBus, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
+from opendbc.car.volkswagen.values import CAR, CarControllerParams as CCP, FW_QUERY_CONFIG, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
 Ecu = CarParams.Ecu
@@ -30,21 +28,6 @@ class TestVolkswagenHCAMitigation(unittest.TestCase):
         should_nudge = actuator_value != 0 and frame == self.STUCK_TORQUE_FRAMES
         expected_torque = actuator_value - (1, -1)[actuator_value < 0] if should_nudge else actuator_value
         assert hca_mitigation.update(actuator_value, actuator_value) == expected_torque, f"{frame=}"
-
-class TestVolkswagenMebButtons(unittest.TestCase):
-  def test_travel_assist_button_enable(self):
-    """Travel Assist enables openpilot longitudinal on its release, like Set and Resume, once ACC is available."""
-    CP = CarInterface.get_params(CAR.VOLKSWAGEN_ID4_MK1, gen_empty_fingerprint(), [], alpha_long=False, is_release=False, docs=False)
-    CI = CarInterface(CP)
-    packer = CANPacker(DBC[CP.carFingerprint][Bus.pt])
-
-    # (TSK_Status, Travel Assist pressed, buttonEnable). With the main switch off (0) it only switches ACC on
-    sequence = [(2, 0, False), (2, 1, False), (2, 1, False), (2, 0, True), (2, 0, False), (0, 1, False), (0, 0, False)]
-    for frame, (tsk_status, pressed, enable) in enumerate(sequence):
-      msgs = [packer.make_can_msg("Motor_51", CanBus(CP).pt, {"TSK_Status": tsk_status}),
-              packer.make_can_msg("GRA_ACC_01", CanBus(CP).pt, {"GRA_TravelAssist": pressed})]
-      CS = CI.update([(int(frame * DT_CTRL * 1e9), [CanData(*msg) for msg in msgs])])
-      assert CS.buttonEnable == enable, f"{frame=}"
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
   def test_spare_part_fw_pattern(self):

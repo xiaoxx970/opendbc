@@ -325,9 +325,8 @@ class CarState(CarStateBase):
     self.klr_stock_values = pt_cp.vl["KLR_01"] if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT else {}
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
-    # With the ACC main switch off, Travel Assist only switches it on, so it enables only when ACC is available
     travel_assist_button = bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"])
-    self.travel_assist_released = self.travel_assist_button_prev and not travel_assist_button and ret.cruiseState.available
+    self.travel_assist_released = self.travel_assist_button_prev and not travel_assist_button
     self.travel_assist_button_prev = travel_assist_button
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
 
