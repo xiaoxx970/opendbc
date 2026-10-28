@@ -22,7 +22,8 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.acc_type = 0
     self.travel_assist_available = False
-    self.travel_assist_button = False
+    # Steering wheel Travel Assist button (GRA_ACC_01.GRA_TravelAssist), unrelated to travel_assist_available from the camera's TA_01
+    self.travel_assist_button_prev = False
     self.travel_assist_released = False
     self.curvature_meas = 0.
 
@@ -326,8 +327,8 @@ class CarState(CarStateBase):
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     # With the ACC main switch off, Travel Assist only switches it on, so it enables only when ACC is available
     travel_assist_button = bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"])
-    self.travel_assist_released = self.travel_assist_button and not travel_assist_button and ret.cruiseState.available
-    self.travel_assist_button = travel_assist_button
+    self.travel_assist_released = self.travel_assist_button_prev and not travel_assist_button and ret.cruiseState.available
+    self.travel_assist_button_prev = travel_assist_button
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
 
     self.frame += 1
