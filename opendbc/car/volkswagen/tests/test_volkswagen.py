@@ -253,7 +253,6 @@ class TestEngageButtons(unittest.TestCase):
     self.assertEqual(self.ci.CS.out_ic.radarAccStatus, 0)  # the radar went quiet
     self.assertFalse(self.ci.CS.out_ic.radarAccFault)
 
-
   def test_cancels_a_radar_engagement_openpilot_did_not_follow(self):
     CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
 
@@ -274,7 +273,6 @@ class TestEngageButtons(unittest.TestCase):
     self.assertTrue(sent[-1])
     # not once the radar's ACC has faulted
     self.assertFalse(any(cancel_sent(7) for _ in range(RADAR_ACC_CANCEL_FRAMES + 2)))
-
 
   def test_acc_waits_for_the_radar(self):
     # 2026-10-27 route 223: Travel Assist at a stop, TSK regulated at +0.08 s, the radar was still in standby and faulted
@@ -313,6 +311,62 @@ class TestEngageButtons(unittest.TestCase):
       sent_status(7, enabled=False)
     sent_status(7, GRA_Tip_Wiederaufnahme=1)
     self.assertEqual(sent_status(7), 3)
+
+  def test_travel_assist_cluster_notification(self):
+    # stock camera after a Travel Assist press: key press flag, then the enable request the cluster shows a text for
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    ta_01 = self.packer.dbc.name_to_msg["TA_01"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("TA_01", float("nan"))], CanBus(self.ci.CP).pt)
+    self.ci.CS.travel_assist_available = True
+
+    def sent(enabled=True, **buttons):
+      self.step(radar_status=3 if enabled else 2, **buttons)
+      self.ci.CS.travel_assist_available = True
+      CC.enabled = CC.longActive = enabled
+      _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+      msgs = [m for m in sends if m[0] == ta_01]
+      if msgs:
+        parser.update([(self.t * 10_000_000, msgs)])
+      return int(parser.vl["TA_01"]["Travel_Assist_Press_Ack"]), int(parser.vl["TA_01"]["Travel_Assist_Request"])
+
+    for _ in range(5):
+      sent(enabled=False)
+    seq = [sent(GRA_TravelAssist=1)] + [sent() for _ in range(200)]
+    self.assertTrue(seq[20][0] and not seq[20][1])
+    self.assertEqual(seq[50], (1, 4))
+    self.assertEqual(seq[100], (0, 4))
+    self.assertEqual(seq[150], (0, 0))
+    # nothing for a press while already engaged, as stock
+    seq = [sent(GRA_TravelAssist=1)] + [sent() for _ in range(200)]
+    self.assertEqual(set(seq), {(0, 0)})
+    # nothing for SET
+    for _ in range(5):
+      sent(enabled=False)
+    seq = [sent(GRA_Tip_Setzen=1)] + [sent() for _ in range(200)]
+    self.assertEqual(set(seq), {(0, 0)})
+
+  def test_engage_display_prio(self):
+    # stock radar ACC_19: medium display prio for 3 s from the engagement, then the active prio
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    acc_19 = self.packer.dbc.name_to_msg["ACC_19"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", float("nan"))], CanBus(self.ci.CP).pt)
+
+    def prio(enabled=True, **buttons):
+      self.step(radar_status=3 if enabled else 2, **buttons)
+      CC.enabled = CC.longActive = enabled
+      _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+      msgs = [m for m in sends if m[0] == acc_19]
+      if msgs:
+        parser.update([(self.t * 10_000_000, msgs)])
+      return int(parser.vl["ACC_19"]["ACC_Display_Prio"])
+
+    for _ in range(10):
+      prio(enabled=False)
+    seq = [prio(GRA_Tip_Setzen=1)] + [prio() for _ in range(400)]
+    self.assertEqual(seq[100], 1)
+    self.assertEqual(seq[280], 1)
+    self.assertEqual(seq[320], 2)
+    self.assertEqual(seq[400], 2)
 
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):

@@ -325,7 +325,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
 
 def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk, lower_jerk, upper_control_limit, lower_control_limit,
                              accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held, speed,
-                             travel_assist_available, start_stop_info=None):
+                             travel_assist_available, start_stop_info=None, travel_assist_notify=(False, False)):
   # active longitudinal control disables one pedal driving (regen mode) while using overriding mechnism
   # error mitigation when stopping or stopped: (newer gen cars can be very sensitive)
   # - send 0 m stopping distance for cars in kind of parameterized stopping mode (stopping accel -0.2 seen for those cars)
@@ -371,9 +371,13 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
 
   if travel_assist_available:
     # satisfy car to prevent errors when pressing Travel Assist Button
+    # travel_assist_notify: the stock camera's key press flag and enable request after a Travel Assist press, which
+    # (inferred from stock drives) make the cluster show "Travel Assist on"
+    pressed, enable_request = travel_assist_notify
     values_ta = {
+       "Travel_Assist_Press_Ack":   int(pressed),
        "Travel_Assist_Status":    4 if acc_enabled else 2,
-       "Travel_Assist_Request":   0,
+       "Travel_Assist_Request":   4 if enable_request else 0,
        "Travel_Assist_Available": 1,
     }
 
@@ -426,11 +430,12 @@ def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
 ACC_HUD_HEARTBEAT_PATTERN = (420, 261, 261, 420, 261, 420, 420, 261)
 
 
-def get_acc_hud_display_prio(acc_control, fcw_alert):
-  # stock MQBevo radar: 0 = highest (warning), 1 = disabled/override, 2 = active, 3 = standby (no prio)
+def get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio=False):
+  # stock MQBevo radar: 0 = highest (warning), 1 = disabled/override and the first 3 s after engaging, 2 = active,
+  # 3 = standby (no prio)
   if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
     return 0
-  if acc_control == ACC_HUD_ACTIVE:
+  if acc_control == ACC_HUD_ACTIVE and not engage_prio:
     return 2
   if acc_control == ACC_HUD_ENABLED:
     return 3
@@ -460,7 +465,7 @@ def merge_radar_hud_warning(values, radar_hud):
 
 
 def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, show_distance_bars, esp_hold, distance, desired_gap, fcw_alert, acc_event, speed_limit,
-                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.), radar_hud=None):
+                           mqb_evo=False, hud_counter=0, neighbour_lead_distance=(0., 0.), radar_hud=None, engage_prio=False):
   # Side lane cars are drawn like the lead car, in every ACC state. A side car at the lead's distance
   # is the lead itself cutting in before the radar re-assigns its lane: draw it only once.
   lead_left, lead_right = (d if not (lead_visible and abs(d - distance) < SIDE_LEAD_DEDUP_DISTANCE) else 0.
@@ -472,7 +477,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
-    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
+    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
     "ACC_Optischer_Fahrerhinweis":   1 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables optical warning
     "ACC_Akustischer_Fahrerhinweis": 3 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables sound warning
     "ACC_Texte_Zusatzanz_02":        11 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # type of warning: Break!
