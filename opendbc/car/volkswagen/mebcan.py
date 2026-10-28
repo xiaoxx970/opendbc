@@ -430,14 +430,28 @@ def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
 ACC_HUD_HEARTBEAT_PATTERN = (420, 261, 261, 420, 261, 420, 420, 261)
 
 
-def get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio=False):
-  # stock MQBevo radar: 0 = highest (warning), 1 = disabled/override and the first 3 s after engaging, 2 = active,
-  # 3 = standby (no prio)
+# The radar's info texts in ACC_19 byte 28, shown with display prio 1 for about 2 s, e.g. 0x14 "ACC not started" for
+# SET, RES or Travel Assist while ACC is off, 0x05 cannot engage at a stop, 0x0f cannot engage while braking. Its ACC
+# fault text 0x02 is left out: openpilot keeps regulating after a radar fault.
+RADAR_HUD_INFO_FAULT = 0x02
+
+
+def get_radar_hud_info(acc_control, radar_hud) -> int:
+  # The radar computes them behind openpilot too; pass them on while openpilot is not engaged either
+  if radar_hud is None or acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+    return 0
+  info = int(radar_hud.get("ACC_Texte_Info", 0))
+  return 0 if info == RADAR_HUD_INFO_FAULT else info
+
+
+def get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio=False, info_text=0):
+  # stock MQBevo radar: 0 = highest (warning), 1 = override, an info text and the first 3 s after engaging,
+  # 2 = active, 3 = off or standby (no prio)
   if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
     return 0
   if acc_control == ACC_HUD_ACTIVE and not engage_prio:
     return 2
-  if acc_control == ACC_HUD_ENABLED:
+  if acc_control in (ACC_HUD_ENABLED, ACC_HUD_DISABLED) and not info_text:
     return 3
   return 1
 
@@ -472,12 +486,15 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
                            for d in neighbour_lead_distance)
   lead_type, left_type, right_type = vision_car_types.get()
 
+  acc_19_sigs = packer.dbc.name_to_msg["ACC_19"].sigs
+  info_text = get_radar_hud_info(acc_control, radar_hud) if mqb_evo and "ACC_Texte_Info" in acc_19_sigs else 0
+
   values = {
     "ACC_Status_ACC":                acc_control,
     "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
-    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
+    "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio, info_text) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
     "ACC_Optischer_Fahrerhinweis":   1 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables optical warning
     "ACC_Akustischer_Fahrerhinweis": 3 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # enables sound warning
     "ACC_Texte_Zusatzanz_02":        11 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # type of warning: Break!
@@ -506,9 +523,11 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "SET_ME_0X7FFF":                 0x7FFF, # unknown
   }
 
+  if info_text:
+    values["ACC_Texte_Info"] = info_text
+
   # side cars exist only in DBCs that define them (not the first MEB generation, which would log
   # an unknown signal for every frame)
-  acc_19_sigs = packer.dbc.name_to_msg["ACC_19"].sigs
   if "Lead_Distance_Left" in acc_19_sigs:
     values["Lead_Distance_Right"] = lead_right  # nearest radar object in the right lane, 0 = none
     values["Lead_Distance_Left"] = lead_left    # nearest radar object in the left lane, 0 = none
