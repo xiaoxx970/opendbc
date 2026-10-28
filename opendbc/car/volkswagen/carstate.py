@@ -463,6 +463,7 @@ class CarState(CarStateBase, MadsCarState):
       ret_ic.radarAccFault = self.radar_acc_status in RADAR_ACC_FAULTED
 
     self.acc_type = ext_cp.vl["ACC_18"]["ACC_Typ"] if not self.flags.disable_radar else 2 # 2: acc stop and go
+    self.acc_stock_values = ext_cp.vl["ACC_18"] if not self.flags.disable_radar else {}
     if self.flags.mqb_evo:
       # ESC_50.Standstill has never read 1 on a Golf 8, not once in thousands of frames at zero wheel speed. That
       # left the long state machine's drive-off latch dead: the hold confirmation drops as soon as the ESP starts

@@ -326,6 +326,34 @@ class TestMebLongStateMachine(unittest.TestCase):
         state.update(CS, CC, 0.0)
         self.assertEqual(state.start_stop_info, 0)
 
+  def test_forwards_radar_engine_start_request(self):
+    # The radar asks for an engine start when the lead pulls away, also while openpilot is disengaged.
+    # The carcontroller passes the radar's ACC_18 only for MQB Evo at a standstill.
+    def start_stop_info(platform, state, CS, acc_stock_values):
+      CP = SimpleNamespace(carFingerprint=platform, flags=platform.config.flags)
+      accel, status, hold_type, braking_to_stop, leaving_standstill, held = state.update(CS, CC, -1.0)
+      _, data, _ = mebcan.create_acc_accel_control(
+        CANPacker(DBC[platform][Bus.pt]), 0, CP, 2, state.acc_enabled,
+        4.0, 4.0, 0.0, 0.0, accel, status, hold_type, braking_to_stop, leaving_standstill, held,
+        CS.out.vEgo * 3.6, False, state.start_stop_info, (False, False), acc_stock_values,
+      )[0]
+      return (data[2] >> 6) & 0x3
+
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        for enabled in (False, True):
+          state = self.make_state_machine(platform)
+          CC = self.make_car_control(enabled=enabled, long_active=enabled, long_state=LongCtrlState.stopping)
+          CS = self.make_car_state(v_ego=0.0, esp_hold=True, engine_on=False)
+          own = start_stop_info(platform, state, CS, None)
+          self.assertEqual(own, state.start_stop_info)
+
+          self.assertEqual(start_stop_info(platform, state, CS, {"ACC_StartStopp_Info": 2}), 2)
+          for radar in (0, 1):
+            self.assertEqual(start_stop_info(platform, state, CS, {"ACC_StartStopp_Info": radar}), own)
+          # nothing passed while moving, or with the radar disabled
+          self.assertEqual(start_stop_info(platform, state, CS, {}), own)
+
   def test_override_holds_until_the_engine_restarts(self):
     # Overriding at a stop with the engine auto stopped must not ramp the hold away before the engine
     # is running again, otherwise the car rolls while waiting for it.
