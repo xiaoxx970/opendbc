@@ -37,6 +37,9 @@ RADAR_ENGAGE_WAIT_FRAMES = 50
 TRAVEL_ASSIST_PRESSED_FRAMES = (12, 70)
 TRAVEL_ASSIST_REQUEST_FRAMES = (30, 135)
 
+# stock radar ACC_19: display prio 1 for 3.00 s from the engage frame (19 stock engagements: 2.99-3.01 s)
+ACC_HUD_ENGAGE_PRIO_FRAMES = 300
+
 
 class HCAMitigation:
   """
@@ -105,13 +108,22 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.speed_limit_changed_timer = -400  # never treat boot as a freshly detected speed limit
     self.radar_disabled_warning_timer = 0
     self.hide_ea_error = False
+    self.enabled_last = False
+    self.acc_hud_engaged_last = False
+    self.acc_hud_engage_frame = 0
+    self.travel_assist_press_frame_last = None
+    self.travel_assist_notify_frame = None
 
-  @staticmethod
-  def travel_assist_notify(CS, CC) -> tuple[bool, bool]:
-    # replay the stock camera's TA_01 after a Travel Assist press openpilot engaged on
-    if not CC.enabled or CS.travel_assist_press_frame is None:
+  def travel_assist_notify(self, CS, CC) -> tuple[bool, bool]:
+    # replay the stock camera's TA_01 after a Travel Assist press openpilot engaged on; like stock, a press while
+    # already engaged shows nothing
+    if CS.travel_assist_press_frame != self.travel_assist_press_frame_last:
+      self.travel_assist_press_frame_last = CS.travel_assist_press_frame
+      self.travel_assist_notify_frame = None if self.enabled_last else CS.travel_assist_press_frame
+    self.enabled_last = CC.enabled
+    if not CC.enabled or self.travel_assist_notify_frame is None:
       return False, False
-    frames = CS.frame - CS.travel_assist_press_frame
+    frames = CS.frame - self.travel_assist_notify_frame
     return (TRAVEL_ASSIST_PRESSED_FRAMES[0] <= frames < TRAVEL_ASSIST_PRESSED_FRAMES[1],
             TRAVEL_ASSIST_REQUEST_FRAMES[0] <= frames < TRAVEL_ASSIST_REQUEST_FRAMES[1])
 
@@ -359,6 +371,12 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
 
         # Use the same state as ACC_18 so HUD and drivetrain status cannot diverge.
         acc_hud_status = self.meb_long_state.acc_status
+        # stock radar: medium display prio for 3 s from the engagement, which keeps the cluster's engage text up
+        acc_engaged = acc_hud_status in (mebcan.ACC_HUD_ACTIVE, mebcan.ACC_HUD_OVERRIDE)
+        if acc_engaged and not self.acc_hud_engaged_last:
+          self.acc_hud_engage_frame = self.frame
+        self.acc_hud_engaged_last = acc_engaged
+        engage_prio = acc_engaged and self.frame - self.acc_hud_engage_frame < ACC_HUD_ENGAGE_PRIO_FRAMES
 
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
 
@@ -396,7 +414,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
                                                          CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit,
                                                          self.flags.mqb_evo, self.frame // self.CCP.ACC_HUD_STEP,
-                                                         CS.neighbour_lead_distance, CS.radar_acc_hud))
+                                                         CS.neighbour_lead_distance, CS.radar_acc_hud, engage_prio))
 
       else:
         lead_distance = 0
