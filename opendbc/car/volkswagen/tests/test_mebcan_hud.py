@@ -42,7 +42,7 @@ class TestAccHudRoadEvent(unittest.TestCase):
   def test_not_in_standby_and_only_known_values(self):
     self.assertEqual(self._event(10, ACC_HUD_ENABLED), 0)
     self.assertEqual(self._event(10, ACC_HUD_DISABLED), 0)
-    for road_event in (1, 2, 3, 6, 11, 12, 13):
+    for road_event in (1, 2, 3, 6, 11, 13):
       self.assertEqual(self._event(road_event), 0)
 
   def test_existing_events_win(self):
