@@ -392,12 +392,13 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
 
         # Emulate the stock pACC cluster prompts from openpilot's own data sources:
-        # - camera speed limit (VZE_04 -> cruiseSpeedLimit) has priority, then sunnypilot's map speed limit
+        # - camera speed limit (VZE_04 -> cruiseSpeedLimit, as openpilot uses it: a ramp's sign read from the motorway is
+        #   held back) has priority, then sunnypilot's map speed limit
         # - a newly detected/changed limit is shown for a few seconds (independent of EnableSpeedLimitControl,
         #   that toggle only gates whether cruise.py adopts the limit as the set speed)
         # - an upcoming map speed limit is shown as "speed limit ahead" while approaching it
         # - vision curve control (SCC-V) slowing for a curve is shown as "curve" with its target speed
-        camera_limit = CS.out_ic.cruiseSpeedLimit
+        camera_limit = CC_IC.hudCarSpeedLimit
         map_limit = CC_IC.hudSpeedLimit if CC_IC.hudSpeedLimitFromMap else 0
         sl_current = camera_limit if camera_limit != 0 else map_limit
         if sl_current != 0 and self.speed_limit_last != sl_current:
@@ -406,20 +407,28 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         sl_active = self.frame - self.speed_limit_changed_timer < 400
         sl_ahead_active = CC_IC.hudSpeedLimitFromMap and CC_IC.hudSpeedLimitAhead and CC_IC.hudSpeedLimit != 0
         curve_active = CC_IC.hudCurveSpeed != 0 and CC_IC.hudCurveSpeed < hud_control.setSpeed
+        # Speed Limit Assist asking to set a limit shows it the whole time it asks, not only when the limit changed
+        sl_offer = (4 if CC_IC.hudSpeedLimitOfferAhead else 5) if CC_IC.hudSpeedLimitOffer != 0 else 0
 
-        if curve_active:
+        # the limit of the event get_acc_hud_event picks: the same order, and only a road prompt shows in ACC standby
+        if acc_engaged and curve_active:
           speed_limit = CC_IC.hudCurveSpeed
-        elif sl_predicative_active:
+        elif acc_engaged and sl_predicative_active:
           speed_limit = CS.out_ic.cruiseSpeedLimitPredicative
-        elif sl_ahead_active:
+        elif acc_engaged and sl_offer:
+          speed_limit = CC_IC.hudSpeedLimitOffer
+        elif acc_engaged and sl_ahead_active:
           speed_limit = CC_IC.hudSpeedLimit
-        elif sl_active:
+        elif acc_engaged and sl_active:
           speed_limit = sl_current
+        elif CC_IC.hudRoadEvent == mebcan.ACC_EVENT_SPEED_LIMIT_AHEAD:
+          speed_limit = CC_IC.hudRoadEventSpeedLimit
         else:
           speed_limit = 0
 
         acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, acc_hud_stop_text, sl_predicative_active, CS.speed_limit_predicative_type, sl_active,
-                                                   curve_active, sl_ahead_active, CC_IC.hudCurveDirection)
+                                                   curve_active, sl_ahead_active, CC_IC.hudCurveDirection, CC_IC.hudRoadEvent,
+                                                   CC_IC.hudRoadEventAlways, sl_offer)
 
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
