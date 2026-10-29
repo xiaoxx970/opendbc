@@ -395,11 +395,13 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
 ACC_EVENT_CURVE_S_BEND = 6
 ACC_EVENT_CURVE_BY_DIRECTION = {-1: 8, 1: 7, 2: ACC_EVENT_CURVE_S_BEND}  # hudCurveDirection -> event
 ACC_EVENTS_CURVE = (6, 7, 8)  # all three show ACC_Event_Wunschgeschw as the curve speed
+# road prompts openpilot can source itself, verified on a Golf 8 cluster: 9 crossing, 10 roundabout, 14 downhill, 15 uphill ahead
+ACC_EVENTS_ROAD = (9, 10, 14, 15)
 SIDE_LEAD_DEDUP_DISTANCE = 5.  # m
 
 
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
-                      curve_speed=False, speed_limit_ahead=False, curve_direction=0):
+                      curve_speed=False, speed_limit_ahead=False, curve_direction=0, road_event=0):
   acc_event = 0
   hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
 
@@ -417,6 +419,8 @@ def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_
     acc_event = 4 # upcoming speed limit from openpilot map data
   elif hud_on and speed_limit:
     acc_event = 5 # acc limited by speed limit (camera or map, recently detected)
+  elif hud_on and road_event in ACC_EVENTS_ROAD:
+    acc_event = road_event # road ahead (roadeventd: model slope, offline map), display only
 
   return acc_event
   
