@@ -5,11 +5,13 @@ from types import SimpleNamespace
 
 from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus, DT_CTRL, structs
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen import mebcan
 from opendbc.car.volkswagen.carcontroller import HCAMitigation, RADAR_ACC_CANCEL_FRAMES, RADAR_ENGAGE_WAIT_FRAMES
 from opendbc.car.volkswagen.carstate import CarState, RADAR_ACC_HUD_TIMEOUT_FRAMES, RADAR_ACC_STATUS_TIMEOUT_FRAMES
 from opendbc.car.volkswagen.interface import CarInterface
+from opendbc.car.volkswagen.mebutils import map_speed_to_acc_tempolimit
 from opendbc.car.volkswagen.values import CAR, DBC, CanBus, CarControllerParams as CCP, FW_QUERY_CONFIG, VolkswagenFlags, WMI
 from opendbc.car.volkswagen.fingerprints import FW_VERSIONS
 
@@ -402,6 +404,37 @@ class TestEngageButtons(unittest.TestCase):
     self.assertTrue(all(event == 3 for event in events[10:240]), events[:20])
     self.assertTrue(all(event == 0 for event in events[260:]))
     self.assertEqual({hms for _, hms in seq[10:240]}, {hms for _, hms in seq[260:]})
+
+  def test_speed_camera_prompt_carries_its_own_limit(self):
+    # roadeventd's speed limit ahead (a speed camera) shows the camera's limit, also in ACC standby, where vision curve
+    # control slowing for a curve must not put its speed there; engaged, the curve and Speed Limit Assist's offer come first
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    acc_19 = self.packer.dbc.name_to_msg["ACC_19"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", float("nan"))], CanBus(self.ci.CP).pt)
+
+    def sent(enabled, frames=20):
+      for _ in range(frames):
+        self.step(radar_status=3 if enabled else 2)
+        CC.enabled = CC.longActive = enabled
+        _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+        msgs = [m for m in sends if m[0] == acc_19]
+        if msgs:
+          parser.update([(self.t * 10_000_000, msgs)])
+      return int(parser.vl["ACC_19"]["ACC_Events"]), int(parser.vl["ACC_19"]["ACC_Tempolimit"])
+
+    camera = map_speed_to_acc_tempolimit(60 * CV.KPH_TO_MS)
+    CC.hudControl.setSpeed = 100 * CV.KPH_TO_MS
+    CC_IC.hudRoadEvent, CC_IC.hudRoadEventAlways, CC_IC.hudRoadEventSpeedLimit = 4, True, 60 * CV.KPH_TO_MS
+    CC_IC.hudCurveSpeed, CC_IC.hudCurveDirection = 50 * CV.KPH_TO_MS, -1
+    self.assertEqual(sent(False, 50), (4, camera))
+    self.assertEqual(sent(True), (8, map_speed_to_acc_tempolimit(50 * CV.KPH_TO_MS)))
+    CC_IC.hudCurveSpeed = 0.
+    self.assertEqual(sent(True), (4, camera))
+    CC_IC.hudSpeedLimitOffer = 80 * CV.KPH_TO_MS
+    self.assertEqual(sent(True), (5, map_speed_to_acc_tempolimit(80 * CV.KPH_TO_MS)))
+    CC_IC.hudSpeedLimitOffer = 0.
+    CC_IC.hudRoadEvent = 12
+    self.assertEqual(sent(False), (12, 0))
 
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):

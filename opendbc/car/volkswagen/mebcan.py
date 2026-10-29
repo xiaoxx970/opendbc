@@ -396,13 +396,16 @@ ACC_EVENT_CURVE_S_BEND = 6
 ACC_EVENT_CURVE_BY_DIRECTION = {-1: 8, 1: 7, 2: ACC_EVENT_CURVE_S_BEND}  # hudCurveDirection -> event
 ACC_EVENTS_CURVE = (6, 7, 8)  # all three show ACC_Event_Wunschgeschw as the curve speed
 # road prompts openpilot can source itself, verified on a Golf 8 cluster: 9 crossing, 10 roundabout, 12 traffic jam, 14 downhill,
-# 15 uphill ahead
-ACC_EVENTS_ROAD = (9, 10, 12, 14, 15)
+# 15 uphill ahead; 4 speed limit ahead (a speed camera, with its limit in ACC_Tempolimit) as for map limits while engaged
+ACC_EVENT_SPEED_LIMIT_AHEAD = 4
+ACC_EVENTS_ROAD = (ACC_EVENT_SPEED_LIMIT_AHEAD, 9, 10, 12, 14, 15)
 SIDE_LEAD_DEDUP_DISTANCE = 5.  # m
 
 
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
-                      curve_speed=False, speed_limit_ahead=False, curve_direction=0, road_event=0, road_event_always=False):
+                      curve_speed=False, speed_limit_ahead=False, curve_direction=0, road_event=0, road_event_always=False,
+                      speed_limit_offer=0):
+  """speed_limit_offer: Speed Limit Assist asks to set a limit, 5 one in force, 4 one ahead, 0 none."""
   acc_event = 0
   hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
   # road prompts set to always show: in ACC standby and with the main switch off too, never with an ACC fault
@@ -418,6 +421,8 @@ def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_
       acc_event = 6 # acc limited by curve (predicative, car map data)
     else:
       acc_event = 4 # acc limited by speed limit by nav (predicative, car map data)
+  elif hud_on and speed_limit_offer in (4, 5):
+    acc_event = speed_limit_offer # Speed Limit Assist asks to set this limit: shown with its number for as long as it asks
   elif hud_on and speed_limit_ahead:
     acc_event = 4 # upcoming speed limit from openpilot map data
   elif hud_on and speed_limit:
@@ -503,7 +508,8 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
 
   values = {
     "ACC_Status_ACC":                acc_control,
-    "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # display speed limits (message type defined by ACC_Events)
+    "ACC_Tempolimit":                map_speed_to_acc_tempolimit(speed_limit) if acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) or
+                                     acc_event == ACC_EVENT_SPEED_LIMIT_AHEAD else 0, # display speed limits (message type defined by ACC_Events)
     "ACC_Wunschgeschw_02":           set_speed if set_speed < 250 else 327.36,
     "ACC_Gesetzte_Zeitluecke":       distance_bars, # 5 distance bars available (3 are used by OP)
     "ACC_Display_Prio":              get_acc_hud_display_prio(acc_control, fcw_alert, engage_prio, info_text) if mqb_evo else (0 if fcw_alert and acc_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 1), # probably keeping warning in front
