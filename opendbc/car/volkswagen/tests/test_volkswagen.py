@@ -405,6 +405,30 @@ class TestEngageButtons(unittest.TestCase):
     self.assertTrue(all(event == 0 for event in events[260:]))
     self.assertEqual({hms for _, hms in seq[10:240]}, {hms for _, hms in seq[260:]})
 
+  def test_the_cluster_shows_the_sign_reading_openpilot_uses(self):
+    # the car reads a ramp's 60 from the motorway and openpilot holds it back: no "limit changed" with it on the cluster
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    acc_19 = self.packer.dbc.name_to_msg["ACC_19"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", float("nan"))], CanBus(self.ci.CP).pt)
+
+    def sent(sign_kph, used_kph, frames=60):
+      for _ in range(frames):
+        self.step(radar_status=3)
+        self.ci.CS.out_ic.cruiseSpeedLimit = sign_kph * CV.KPH_TO_MS
+        CC.enabled = CC.longActive = True
+        CC_IC.hudCarSpeedLimit = used_kph * CV.KPH_TO_MS
+        _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+        msgs = [m for m in sends if m[0] == acc_19]
+        if msgs:
+          parser.update([(self.t * 10_000_000, msgs)])
+      return int(parser.vl["ACC_19"]["ACC_Events"]), int(parser.vl["ACC_19"]["ACC_Tempolimit"])
+
+    CC.hudControl.setSpeed = 120 * CV.KPH_TO_MS
+    self.assertEqual(sent(100, 100, frames=40)[0], 5)   # a new sign: shown for 4 s
+    self.assertEqual(sent(100, 100, frames=500)[0], 0)
+    self.assertEqual(sent(60, 100)[0], 0)               # held back
+    self.assertEqual(sent(60, 60), (5, map_speed_to_acc_tempolimit(60 * CV.KPH_TO_MS)))   # taken (on the ramp)
+
   def test_speed_camera_prompt_carries_its_own_limit(self):
     # roadeventd's speed limit ahead (a speed camera) shows the camera's limit, also in ACC standby, where vision curve
     # control slowing for a curve must not put its speed there; engaged, the curve and Speed Limit Assist's offer come first

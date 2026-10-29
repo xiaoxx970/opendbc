@@ -392,12 +392,13 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
 
         # Emulate the stock pACC cluster prompts from openpilot's own data sources:
-        # - camera speed limit (VZE_04 -> cruiseSpeedLimit) has priority, then sunnypilot's map speed limit
+        # - camera speed limit (VZE_04 -> cruiseSpeedLimit, as openpilot uses it: a ramp's sign read from the motorway is
+        #   held back) has priority, then sunnypilot's map speed limit
         # - a newly detected/changed limit is shown for a few seconds (independent of EnableSpeedLimitControl,
         #   that toggle only gates whether cruise.py adopts the limit as the set speed)
         # - an upcoming map speed limit is shown as "speed limit ahead" while approaching it
         # - vision curve control (SCC-V) slowing for a curve is shown as "curve" with its target speed
-        camera_limit = CS.out_ic.cruiseSpeedLimit
+        camera_limit = CC_IC.hudCarSpeedLimit
         map_limit = CC_IC.hudSpeedLimit if CC_IC.hudSpeedLimitFromMap else 0
         sl_current = camera_limit if camera_limit != 0 else map_limit
         if sl_current != 0 and self.speed_limit_last != sl_current:

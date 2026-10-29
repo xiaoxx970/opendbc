@@ -222,6 +222,7 @@ class CarControlIC:
   hudSpeedLimitOffer: float = auto_field()  # m/s, the limit Speed Limit Assist is asking to set, 0 = none
   hudSpeedLimitOfferAhead: bool = auto_field()  # that limit lies ahead
   hudRoadEventSpeedLimit: float = auto_field()  # m/s, the limit of a speed limit ahead road prompt (hudRoadEvent 4), 0 = none
+  hudCarSpeedLimit: float = auto_field()  # m/s, the car's sign reading as openpilot uses it (a ramp's sign read from the motorway held back), 0 = none
 
 
 @auto_dataclass
