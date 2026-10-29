@@ -39,6 +39,9 @@ TRAVEL_ASSIST_REQUEST_FRAMES = (30, 135)
 
 # stock radar ACC_19: display prio 1 for 3.00 s from the engage frame (19 stock engagements: 2.99-3.01 s)
 ACC_HUD_ENGAGE_PRIO_FRAMES = 300
+# stock radar ACC_19: "ACC ready to start" (ACC_Events 3) for 2.50 s once its own ACC has braked the car into a hold, never
+# after an engagement at a stop (2026-10-29: 9 of 11 stock stops exactly 2.50 s, none in 27 of 29 engagements at a stop)
+ACC_HUD_STOP_TEXT_FRAMES = 250
 
 
 class HCAMitigation:
@@ -111,6 +114,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.enabled_last = False
     self.acc_hud_engaged_last = False
     self.acc_hud_engage_frame = 0
+    self.esp_hold_last = False
+    self.acc_hud_stop_frame = -ACC_HUD_STOP_TEXT_FRAMES
     self.travel_assist_press_frame_last = None
     self.travel_assist_notify_frame = None
 
@@ -378,6 +383,11 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
           self.acc_hud_engage_frame = self.frame
         self.acc_hud_engaged_last = acc_engaged
         engage_prio = acc_engaged and self.frame - self.acc_hud_engage_frame < ACC_HUD_ENGAGE_PRIO_FRAMES
+        # the hold began while openpilot's ACC was regulating, so it braked the car to this stop: show ready to start
+        if CS.esp_hold_confirmation and not self.esp_hold_last and acc_hud_status == mebcan.ACC_HUD_ACTIVE:
+          self.acc_hud_stop_frame = self.frame
+        self.esp_hold_last = CS.esp_hold_confirmation
+        acc_hud_stop_text = CS.esp_hold_confirmation and self.frame - self.acc_hud_stop_frame < ACC_HUD_STOP_TEXT_FRAMES
 
         sl_predicative_active = True if CC_IC.cruiseSpeedLimitPredicative and CS.out_ic.cruiseSpeedLimitPredicative != 0 else False
 
@@ -408,7 +418,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         else:
           speed_limit = 0
 
-        acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, CS.speed_limit_predicative_type, sl_active,
+        acc_hud_event = self.CCS.get_acc_hud_event(acc_hud_status, acc_hud_stop_text, sl_predicative_active, CS.speed_limit_predicative_type, sl_active,
                                                    curve_active, sl_ahead_active, CC_IC.hudCurveDirection, CC_IC.hudRoadEvent)
 
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
