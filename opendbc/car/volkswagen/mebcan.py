@@ -402,9 +402,11 @@ SIDE_LEAD_DEDUP_DISTANCE = 5.  # m
 
 
 def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_limit_predicative_type, speed_limit,
-                      curve_speed=False, speed_limit_ahead=False, curve_direction=0, road_event=0):
+                      curve_speed=False, speed_limit_ahead=False, curve_direction=0, road_event=0, road_event_always=False):
   acc_event = 0
   hud_on = acc_hud_control in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE)
+  # road prompts set to always show: in ACC standby and with the main switch off too, never with an ACC fault
+  road_on = hud_on or (road_event_always and acc_hud_control in (ACC_HUD_ENABLED, ACC_HUD_DISABLED))
 
   if esp_hold and acc_hud_control == ACC_HUD_ACTIVE:
     acc_event = 3 # acc ready message at standstill
@@ -420,7 +422,7 @@ def get_acc_hud_event(acc_hud_control, esp_hold, speed_limit_predicative, speed_
     acc_event = 4 # upcoming speed limit from openpilot map data
   elif hud_on and speed_limit:
     acc_event = 5 # acc limited by speed limit (camera or map, recently detected)
-  elif hud_on and road_event in ACC_EVENTS_ROAD:
+  elif road_on and road_event in ACC_EVENTS_ROAD:
     acc_event = road_event # road ahead (roadeventd: model slope, offline map, Baidu traffic), display only
 
   return acc_event

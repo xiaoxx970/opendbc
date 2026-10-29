@@ -218,6 +218,7 @@ class CarControlIC:
   hudCurveDirection: int = auto_field()  # direction of that curve: 0 = none, -1 = left, 1 = right, 2 = S-bend
   hudRoadEvent: int = auto_field()  # road prompt (ACC_Events value): 0 = none, 9 crossing, 10 roundabout, 14 downhill, 15 uphill
   hudRoadEventDistance: float = auto_field()  # m to that road event, 0 = unknown
+  hudRoadEventAlways: bool = auto_field()  # show it in ACC standby and with the main switch off too
 
 
 @auto_dataclass

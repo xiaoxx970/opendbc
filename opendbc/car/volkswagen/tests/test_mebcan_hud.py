@@ -6,8 +6,8 @@ from opendbc.car import Bus
 from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, DBC
 from opendbc.car.volkswagen.mebcan import create_acc_hud_control, RADAR_HUD_WARNING_SIGNALS
-from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_OVERRIDE, LDW_LINE_ACTIVE, LDW_LINE_NONE, \
-  LDW_LINE_PASSIVE, ACC_EVENTS_ROAD, get_acc_hud_event, get_lane_line_display
+from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ERROR, ACC_HUD_OVERRIDE, LDW_LINE_ACTIVE, \
+  LDW_LINE_NONE, LDW_LINE_PASSIVE, ACC_EVENTS_ROAD, get_acc_hud_event, get_lane_line_display
 
 
 class TestAccHudCurveEvent(unittest.TestCase):
@@ -30,9 +30,9 @@ class TestAccHudCurveEvent(unittest.TestCase):
 
 class TestAccHudRoadEvent(unittest.TestCase):
   @staticmethod
-  def _event(road_event, acc_hud=ACC_HUD_ACTIVE, esp_hold=False, curve=False, sl_ahead=False, sl=0):
+  def _event(road_event, acc_hud=ACC_HUD_ACTIVE, esp_hold=False, curve=False, sl_ahead=False, sl=0, always=False):
     return get_acc_hud_event(acc_hud, esp_hold, False, 0, sl, curve_speed=curve, speed_limit_ahead=sl_ahead, curve_direction=-1,
-                             road_event=road_event)
+                             road_event=road_event, road_event_always=always)
 
   def test_road_events_shown_while_acc_is_on(self):
     for road_event in ACC_EVENTS_ROAD:
@@ -45,6 +45,13 @@ class TestAccHudRoadEvent(unittest.TestCase):
     for road_event in (1, 2, 3, 6, 11, 13):
       self.assertEqual(self._event(road_event), 0)
 
+  def test_always_also_in_standby_and_with_the_main_switch_off(self):
+    for road_event in ACC_EVENTS_ROAD:
+      for acc_hud in (ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+        self.assertEqual(self._event(road_event, acc_hud, always=True), road_event)
+      self.assertEqual(self._event(road_event, ACC_HUD_ERROR, always=True), 0)  # never over an ACC fault
+    self.assertEqual(self._event(11, ACC_HUD_ENABLED, always=True), 0)
+
   def test_existing_events_win(self):
     self.assertEqual(self._event(14, esp_hold=True), 3)
     self.assertEqual(self._event(14, curve=True), 8)
@@ -53,13 +60,14 @@ class TestAccHudRoadEvent(unittest.TestCase):
 
   def test_road_event_only_fills_an_empty_slot(self):
     # with no road event every input combination keeps its old event; a road event only replaces "nothing shown"
-    for acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead in itertools.product(
-        (ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE), (False, True), (False, True), (0, 1), (0, 1), (False, True),
-        (False, True)):
+    for acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, always in itertools.product(
+        (ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE, ACC_HUD_ERROR), (False, True), (False, True), (0, 1), (0, 1),
+        (False, True), (False, True), (False, True)):
       before = get_acc_hud_event(acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, 1)
-      self.assertEqual(get_acc_hud_event(acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, 1, 0), before)
-      with_road = get_acc_hud_event(acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, 1, 10)
-      self.assertEqual(with_road, before if before or acc_hud not in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 10)
+      self.assertEqual(get_acc_hud_event(acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, 1, 0, always), before)
+      with_road = get_acc_hud_event(acc_hud, esp_hold, pred, pred_type, sl, curve, sl_ahead, 1, 10, always)
+      shown = acc_hud in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) or (always and acc_hud in (ACC_HUD_DISABLED, ACC_HUD_ENABLED))
+      self.assertEqual(with_road, before if before or not shown else 10)
 
   def test_road_event_on_the_wire_without_a_speed(self):
     packer = CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
@@ -69,6 +77,30 @@ class TestAccHudRoadEvent(unittest.TestCase):
       parser.update([(0, [(addr, dat, bus)])])
       self.assertEqual(parser.vl["ACC_19"]["ACC_Events"], road_event)
       self.assertAlmostEqual(parser.vl["ACC_19"]["ACC_Event_Wunschgeschw"], 327.36, delta=0.5)  # no value, like stock
+
+  def test_always_changes_only_acc_events_on_the_wire(self):
+    # in standby and with the main switch off as when engaged: a prompt changes the ACC_Events bits of ACC_19 and nothing else
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", 0)], 0)
+
+    def frame(acc_hud, acc_event):
+      return create_acc_hud_control(packer, 0, acc_hud, 100, True, 2, True, False, 40, 20, False, acc_event, 0, True, 5, (30., 25.))
+
+    def xor(a, b):
+      return bytes(x ^ y for x, y in zip(a, b, strict=True))
+
+    events_bits = xor(frame(ACC_HUD_ACTIVE, 0)[1], frame(ACC_HUD_ACTIVE, 0xF)[1])
+    self.assertEqual(sum(bin(b).count("1") for b in events_bits), 4)
+    for acc_hud in (ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+      for road_event in ACC_EVENTS_ROAD:
+        acc_event = get_acc_hud_event(acc_hud, False, False, 0, 0, road_event=road_event, road_event_always=True)
+        addr, dat, bus = frame(acc_hud, acc_event)
+        diff = xor(frame(acc_hud, 0)[1], dat)
+        self.assertTrue(any(diff))
+        self.assertEqual(bytes(d & ~m & 0xFF for d, m in zip(diff, events_bits, strict=True)), bytes(len(diff)))
+        parser.update([(0, [(addr, dat, bus)])])
+        self.assertEqual(parser.vl["ACC_19"]["ACC_Events"], road_event)
+        self.assertEqual(parser.vl["ACC_19"]["ACC_Status_ACC"], acc_hud)
 
 
 class TestLaneLineDisplay(unittest.TestCase):
