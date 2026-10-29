@@ -216,9 +216,12 @@ class CarControlIC:
   hudSpeedLimitAhead: bool = auto_field()  # hudSpeedLimit is an upcoming (not yet reached) limit
   hudCurveSpeed: float = auto_field()  # m/s, vision curve target speed while slowing for a curve, 0 = none
   hudCurveDirection: int = auto_field()  # direction of that curve: 0 = none, -1 = left, 1 = right, 2 = S-bend
-  hudRoadEvent: int = auto_field()  # road prompt (ACC_Events value): 0 = none, 9 crossing, 10 roundabout, 14 downhill, 15 uphill
+  hudRoadEvent: int = auto_field()  # road prompt (ACC_Events value): 0 = none, 4 speed limit ahead, 9 crossing, 10 roundabout, 12 jam, 14/15 slope
   hudRoadEventDistance: float = auto_field()  # m to that road event, 0 = unknown
   hudRoadEventAlways: bool = auto_field()  # show it in ACC standby and with the main switch off too
+  hudSpeedLimitOffer: float = auto_field()  # m/s, the limit Speed Limit Assist is asking to set, 0 = none
+  hudSpeedLimitOfferAhead: bool = auto_field()  # that limit lies ahead
+  hudRoadEventSpeedLimit: float = auto_field()  # m/s, the limit of a speed limit ahead road prompt (hudRoadEvent 4), 0 = none
 
 
 @auto_dataclass

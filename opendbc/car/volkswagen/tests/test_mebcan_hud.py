@@ -4,10 +4,11 @@ import unittest
 from opendbc.can import CANPacker, CANParser
 from opendbc.car import Bus
 from opendbc.car.volkswagen.carstate import CarState
+from opendbc.car.volkswagen.mebutils import map_speed_to_acc_tempolimit
 from opendbc.car.volkswagen.values import CAR, DBC
 from opendbc.car.volkswagen.mebcan import create_acc_hud_control, RADAR_HUD_WARNING_SIGNALS
 from opendbc.car.volkswagen.mebcan import ACC_HUD_ACTIVE, ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ERROR, ACC_HUD_OVERRIDE, LDW_LINE_ACTIVE, \
-  LDW_LINE_NONE, LDW_LINE_PASSIVE, ACC_EVENTS_ROAD, get_acc_hud_event, get_lane_line_display
+  LDW_LINE_NONE, LDW_LINE_PASSIVE, ACC_EVENT_SPEED_LIMIT_AHEAD, ACC_EVENTS_ROAD, get_acc_hud_event, get_lane_line_display
 
 
 class TestAccHudCurveEvent(unittest.TestCase):
@@ -101,6 +102,70 @@ class TestAccHudRoadEvent(unittest.TestCase):
         parser.update([(0, [(addr, dat, bus)])])
         self.assertEqual(parser.vl["ACC_19"]["ACC_Events"], road_event)
         self.assertEqual(parser.vl["ACC_19"]["ACC_Status_ACC"], acc_hud)
+
+  def test_speed_limit_ahead_carries_its_limit_also_in_standby(self):
+    # a speed camera ahead: ACC_Events 4 and the limit in ACC_Tempolimit, nothing else changes; other events keep it off in standby
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", 0)], 0)
+
+    def frame(acc_hud, acc_event, speed_limit):
+      return create_acc_hud_control(packer, 0, acc_hud, 100, True, 2, True, False, 40, 20, False, acc_event, speed_limit, True, 5, (30., 25.))
+
+    def xor(a, b):
+      return bytes(x ^ y for x, y in zip(a, b, strict=True))
+
+    events_bits = xor(frame(ACC_HUD_ACTIVE, 0, 0)[1], frame(ACC_HUD_ACTIVE, 0xF, 0)[1])
+    limit_bits = bytes(x | y for x, y in zip(*(xor(frame(ACC_HUD_ACTIVE, 0, 0)[1], frame(ACC_HUD_ACTIVE, 0, kph / 3.6)[1]) for kph in (5, 250)),
+                                             strict=True))
+    self.assertEqual(sum(bin(b).count("1") for b in limit_bits), 5)
+    for acc_hud in (ACC_HUD_DISABLED, ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+      acc_event = get_acc_hud_event(acc_hud, False, False, 0, 0, road_event=ACC_EVENT_SPEED_LIMIT_AHEAD, road_event_always=True)
+      self.assertEqual(acc_event, ACC_EVENT_SPEED_LIMIT_AHEAD)
+      addr, dat, bus = frame(acc_hud, acc_event, 60 / 3.6)
+      diff = xor(frame(acc_hud, 0, 0)[1], dat)
+      self.assertEqual(bytes(d & ~(m | k) & 0xFF for d, m, k in zip(diff, events_bits, limit_bits, strict=True)), bytes(len(diff)))
+      parser.update([(0, [(addr, dat, bus)])])
+      self.assertEqual(parser.vl["ACC_19"]["ACC_Events"], ACC_EVENT_SPEED_LIMIT_AHEAD)
+      self.assertEqual(parser.vl["ACC_19"]["ACC_Tempolimit"], map_speed_to_acc_tempolimit(60 / 3.6))
+      self.assertAlmostEqual(parser.vl["ACC_19"]["ACC_Event_Wunschgeschw"], 327.36, delta=0.5)
+    for acc_hud in (ACC_HUD_DISABLED, ACC_HUD_ENABLED):
+      for road_event in (9, 10, 12, 14, 15):
+        parser.update([(0, [frame(acc_hud, road_event, 60 / 3.6)])])
+        self.assertEqual(parser.vl["ACC_19"]["ACC_Tempolimit"], 0)
+
+
+class TestAccHudSpeedLimitOffer(unittest.TestCase):
+  @staticmethod
+  def _event(offer, acc_hud=ACC_HUD_ACTIVE, esp_hold=False, curve=False, pred=False, sl_ahead=False, sl=0, road_event=0):
+    return get_acc_hud_event(acc_hud, esp_hold, pred, 0, sl, curve_speed=curve, speed_limit_ahead=sl_ahead, curve_direction=-1,
+                             road_event=road_event, speed_limit_offer=offer)
+
+  def test_shown_for_as_long_as_assist_asks(self):
+    for acc_hud in (ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE):
+      self.assertEqual(self._event(5, acc_hud), 5)
+      self.assertEqual(self._event(4, acc_hud), 4)
+    self.assertEqual(self._event(0), 0)
+    self.assertEqual(self._event(5, ACC_HUD_ENABLED), 0)   # assist only asks while openpilot's ACC is on
+
+  def test_priority(self):
+    self.assertEqual(self._event(5, esp_hold=True), 3)
+    self.assertEqual(self._event(5, curve=True), 8)
+    self.assertEqual(self._event(5, pred=True), 4)
+    self.assertEqual(self._event(5, sl_ahead=True), 5)   # the limit assist asks about, not the map's next one
+    self.assertEqual(self._event(4, sl=1), 4)
+    self.assertEqual(self._event(5, road_event=12), 5)
+    self.assertEqual(self._event(5, road_event=ACC_EVENT_SPEED_LIMIT_AHEAD), 5)   # a speed camera prompt waits too
+
+  def test_number_on_the_wire(self):
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt])
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_19", 0)], 0)
+    for offer in (4, 5):
+      event = self._event(offer)
+      addr, dat, bus = create_acc_hud_control(packer, 0, ACC_HUD_ACTIVE, 100, False, 2, False, False, 0, 20, False, event, 60 / 3.6, True, 0)
+      parser.update([(0, [(addr, dat, bus)])])
+      self.assertEqual(parser.vl["ACC_19"]["ACC_Events"], offer)
+      self.assertEqual(parser.vl["ACC_19"]["ACC_Tempolimit"], map_speed_to_acc_tempolimit(60 / 3.6))
+      self.assertGreater(parser.vl["ACC_19"]["ACC_Tempolimit"], 0)
 
 
 class TestLaneLineDisplay(unittest.TestCase):
