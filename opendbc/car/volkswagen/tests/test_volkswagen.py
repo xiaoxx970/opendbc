@@ -200,7 +200,7 @@ class TestEngageButtons(unittest.TestCase):
     self.ci, self.packer = TestRadarAccHud.make_interface()
     self.t = 0
 
-  def step(self, brake=0, speed=50., radar_status=2, **buttons):
+  def step(self, brake=0, speed=50., radar_status=2, camera_ta=None, **buttons):
     self.t += 1
     wheels = dict.fromkeys(("VL_Radgeschw", "VR_Radgeschw", "HL_Radgeschw", "HR_Radgeschw"), speed)
     msgs = [self.packer.make_can_msg("GRA_ACC_01", CanBus(self.ci.CP).pt, buttons),
@@ -209,6 +209,8 @@ class TestEngageButtons(unittest.TestCase):
             self.packer.make_can_msg("ESC_51", CanBus(self.ci.CP).pt, wheels)]
     if radar_status is not None:
       msgs.append(self.packer.make_can_msg("ACC_18", CanBus(self.ci.CP).cam, {"ACC_Status_ACC": radar_status}))
+    if camera_ta is not None:
+      msgs.append(self.packer.make_can_msg("TA_01", CanBus(self.ci.CP).cam, camera_ta))
     return self.ci.update([(self.t, msgs)])[0]
 
   def test_engage_on_press(self):
@@ -313,15 +315,20 @@ class TestEngageButtons(unittest.TestCase):
     self.assertEqual(sent_status(7), 3)
 
   def test_travel_assist_cluster_notification(self):
-    # stock camera after a Travel Assist press: key press flag, then the enable request the cluster shows a text for
+    # forward the camera's answer to a Travel Assist press (press acknowledgement, enable request) after engaging
     CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
     ta_01 = self.packer.dbc.name_to_msg["TA_01"].address
     parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("TA_01", float("nan"))], CanBus(self.ci.CP).pt)
-    self.ci.CS.travel_assist_available = True
 
-    def sent(enabled=True, **buttons):
-      self.step(radar_status=3 if enabled else 2, **buttons)
-      self.ci.CS.travel_assist_available = True
+    def camera(frames, request=4):
+      # stock camera timing after an engaging press (stock drives 08-08, 08-24)
+      if frames is None:
+        return {"Travel_Assist_Available": 1}
+      return {"Travel_Assist_Available": 1, "Travel_Assist_Press_Ack": int(12 <= frames < 70),
+              "Travel_Assist_Request": request if 30 <= frames < 135 else 0}
+
+    def sent(enabled=True, frames=None, request=4, **buttons):
+      self.step(radar_status=3 if enabled else 2, camera_ta=camera(frames, request), **buttons)
       CC.enabled = CC.longActive = enabled
       _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
       msgs = [m for m in sends if m[0] == ta_01]
@@ -331,19 +338,20 @@ class TestEngageButtons(unittest.TestCase):
 
     for _ in range(5):
       sent(enabled=False)
-    seq = [sent(GRA_TravelAssist=1)] + [sent() for _ in range(200)]
+    seq = [sent(frames=0, GRA_TravelAssist=1)] + [sent(frames=i) for i in range(1, 200)]
     self.assertTrue(seq[20][0] and not seq[20][1])
     self.assertEqual(seq[50], (1, 4))
     self.assertEqual(seq[100], (0, 4))
-    self.assertEqual(seq[150], (0, 0))
-    # nothing for a press while already engaged, as stock
-    seq = [sent(GRA_TravelAssist=1)] + [sent() for _ in range(200)]
+    self.assertEqual(seq[149], (0, 0))
+    # a camera answer outside the window after the engagement is not forwarded
+    seq = [sent(frames=i) for i in range(200)]
     self.assertEqual(set(seq), {(0, 0)})
-    # nothing for SET
+    # a Travel Assist error (request 1) is not forwarded
     for _ in range(5):
       sent(enabled=False)
-    seq = [sent(GRA_Tip_Setzen=1)] + [sent() for _ in range(200)]
-    self.assertEqual(set(seq), {(0, 0)})
+    seq = [sent(frames=0, request=1, GRA_TravelAssist=1)] + [sent(frames=i, request=1) for i in range(1, 200)]
+    self.assertEqual(seq[50], (1, 0))
+    self.assertEqual({r for _, r in seq}, {0})
 
   def test_engage_display_prio(self):
     # stock radar ACC_19: medium display prio for 3 s from the engagement, then the active prio

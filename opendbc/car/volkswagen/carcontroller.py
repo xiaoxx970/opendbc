@@ -32,10 +32,9 @@ RADAR_ACC_CANCEL_FRAMES = 15
 # openpilot's ACC waits this long after engaging for the radar's own ACC to engage too, then regulates anyway: the radar
 # engages 0.01-0.23 s after the press, and an ACC openpilot can use beats keeping the radar's engine restart
 RADAR_ENGAGE_WAIT_FRAMES = 50
-# The stock camera's TA_01 after a Travel Assist press that engages (stock drives 08-08, 08-24): key press flag from
-# +0.12 to +0.7 s, enable request from +0.3 to +1.35 s. Inferred to be what shows "Travel Assist on" on the cluster.
-TRAVEL_ASSIST_PRESSED_FRAMES = (12, 70)
-TRAVEL_ASSIST_REQUEST_FRAMES = (30, 135)
+# For this long after engaging, forward the camera's TA_01 answer to a Travel Assist press (press acknowledgement and
+# enable request, 0.11 to 1.4 s after the press on stock), which shows "Travel Assist on" on the cluster
+TRAVEL_ASSIST_FORWARD_FRAMES = 150
 
 # stock radar ACC_19: display prio 1 for 3.00 s from the engage frame (19 stock engagements: 2.99-3.01 s)
 ACC_HUD_ENGAGE_PRIO_FRAMES = 300
@@ -111,21 +110,15 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.enabled_last = False
     self.acc_hud_engaged_last = False
     self.acc_hud_engage_frame = 0
-    self.travel_assist_press_frame_last = None
-    self.travel_assist_notify_frame = None
+    self.engage_frame = 0
 
-  def travel_assist_notify(self, CS, CC) -> tuple[bool, bool]:
-    # replay the stock camera's TA_01 after a Travel Assist press openpilot engaged on; like stock, a press while
-    # already engaged shows nothing
-    if CS.travel_assist_press_frame != self.travel_assist_press_frame_last:
-      self.travel_assist_press_frame_last = CS.travel_assist_press_frame
-      self.travel_assist_notify_frame = None if self.enabled_last else CS.travel_assist_press_frame
+  def travel_assist_stock_values(self, CS, CC):
+    # the camera only answers a Travel Assist press that turns Travel Assist on, so after SET/RES or a press while
+    # already engaged there is nothing to forward, as on stock
+    if CC.enabled and not self.enabled_last:
+      self.engage_frame = CS.frame
     self.enabled_last = CC.enabled
-    if not CC.enabled or self.travel_assist_notify_frame is None:
-      return False, False
-    frames = CS.frame - self.travel_assist_notify_frame
-    return (TRAVEL_ASSIST_PRESSED_FRAMES[0] <= frames < TRAVEL_ASSIST_PRESSED_FRAMES[1],
-            TRAVEL_ASSIST_REQUEST_FRAMES[0] <= frames < TRAVEL_ASSIST_REQUEST_FRAMES[1])
+    return CS.ta_stock_values if CC.enabled and CS.frame - self.engage_frame < TRAVEL_ASSIST_FORWARD_FRAMES else None
 
   def update(self, CC, CC_SP, CC_IC, CS, now_nanos):
     actuators = CC.actuators
@@ -285,7 +278,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                            accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available,
                                                            self.meb_long_state.start_stop_info,
-                                                           self.travel_assist_notify(CS, CC),
+                                                           self.travel_assist_stock_values(CS, CC),
                                                            CS.acc_stock_values if self.flags.mqb_evo and CS.out.standstill else None))
 
       else:

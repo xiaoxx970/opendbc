@@ -21,7 +21,7 @@ RADAR_ACC_STATUS_TIMEOUT_FRAMES = 10  # the radar sends ACC_18 every 20 ms
 RADAR_ACC_ENGAGED = (3, 4)  # regulating, driver override
 RADAR_ACC_SHUTOFF = 5
 RADAR_ACC_FAULTED = (6, 7)
-ENGAGE_BUTTONS = (ButtonType.setCruise, ButtonType.resumeCruise)
+ENGAGE_BUTTONS = (ButtonType.setCruise, ButtonType.resumeCruise, ButtonType.travelAssist)
 
 
 def radar_objects_available(CP) -> bool:
@@ -78,9 +78,8 @@ class CarState(CarStateBase, MadsCarState):
     self.radar_acc_status = None  # the radar's own ACC_Status_ACC while it keeps sending ACC_18, else None
     self.radar_acc_status_nanos = 0
     self.radar_acc_status_frame = 0
-    self.travel_assist_button = False
     self.engage_button_enable = False
-    self.travel_assist_press_frame = None
+    self.ta_stock_values = {}
 
   @staticmethod
   def parse_neighbour_leads(radar_values) -> tuple[float, float]:
@@ -127,15 +126,12 @@ class CarState(CarStateBase, MadsCarState):
       carlog.warning({"event": "radar ACC status", "status": status, "prev": self.radar_acc_status})
     self.radar_acc_status = status
 
-  def update_engage_buttons(self, buttonEvents: list[structs.CarState.ButtonEvent], travel_assist_button: bool) -> bool:
+  @staticmethod
+  def update_engage_buttons(buttonEvents: list[structs.CarState.ButtonEvent]) -> bool:
     # The radar engages its own ACC on the press of SET, RES or Travel Assist, unless braking on the move, and faults
     # it when TSK does not follow within 0.4 s. Engage on the press too: a press while braking on the move ends in a
     # "Pedal Pressed" no entry, like the radar's refusal, and the later release no longer engages behind its back.
-    travel_assist_pressed = travel_assist_button and not self.travel_assist_button
-    self.travel_assist_button = travel_assist_button
-    if travel_assist_pressed:
-      self.travel_assist_press_frame = self.frame
-    return travel_assist_pressed or any(b.pressed and b.type in ENGAGE_BUTTONS for b in buttonEvents)
+    return any(b.pressed and b.type in ENGAGE_BUTTONS for b in buttonEvents)
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if self.radar_acc_hud_available:
@@ -143,7 +139,7 @@ class CarState(CarStateBase, MadsCarState):
     if not self.CP.pcmCruise:
       for b in buttonEvents:
         # Enable OP long on falling edge of enable buttons
-        if b.type in (ButtonType.setCruise, ButtonType.resumeCruise) and not b.pressed:
+        if b.type in ENGAGE_BUTTONS and not b.pressed:
           return True
     return False
 
@@ -483,6 +479,7 @@ class CarState(CarStateBase, MadsCarState):
       else:
         self.esp_hold_confirmation = self.esp_standstill
     self.travel_assist_available = bool(cam_cp.vl["TA_01"]["Travel_Assist_Available"])
+    self.ta_stock_values = cam_cp.vl["TA_01"]
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled   = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
@@ -588,7 +585,7 @@ class CarState(CarStateBase, MadsCarState):
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
     if self.radar_acc_hud_available:
       # The Travel Assist key engages the radar's own ACC like SET does, so it engages openpilot fully too
-      self.engage_button_enable = self.update_engage_buttons(ret.buttonEvents, bool(pt_cp.vl["GRA_ACC_01"]["GRA_TravelAssist"]))
+      self.engage_button_enable = self.update_engage_buttons(ret.buttonEvents)
     
     # Additional safety checks performed in CarInterface.
     ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"]) # this is also true for ESC Sport mode
