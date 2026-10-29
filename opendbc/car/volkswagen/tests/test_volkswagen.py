@@ -376,6 +376,41 @@ class TestEngageButtons(unittest.TestCase):
     self.assertEqual(seq[320], 2)
     self.assertEqual(seq[400], 2)
 
+  def test_ready_to_start_only_after_braking_to_a_stop(self):
+    # stock radar ACC_19: "ACC ready to start" (ACC_Events 3) for 2.5 s once its ACC has braked the car into a hold, not
+    # after an engagement at a stop, where it would cover the engage text; ACC_18's hold does not depend on it
+    CC, CC_SP, CC_IC = structs.CarControl(), structs.CarControlSP(), structs.CarControlIC()
+    acc_18 = self.packer.dbc.name_to_msg["ACC_18"].address
+    acc_19 = self.packer.dbc.name_to_msg["ACC_19"].address
+    parser = CANParser(DBC[CAR.VOLKSWAGEN_GOLF_MK8][Bus.pt], [("ACC_18", float("nan")), ("ACC_19", float("nan"))],
+                       CanBus(self.ci.CP).pt)
+
+    def sent(enabled=True, held=True):
+      self.step(radar_status=3 if enabled else 2, speed=0. if held else 30.)
+      self.ci.CS.esp_hold_confirmation = held
+      CC.enabled = CC.longActive = enabled
+      CC.actuators.longControlState = LongCtrlState.stopping if held else LongCtrlState.pid
+      _, sends = self.ci.apply(CC.as_reader(), CC_SP, CC_IC, self.t * 10_000_000)
+      msgs = [m for m in sends if m[0] in (acc_18, acc_19)]
+      if msgs:
+        parser.update([(self.t * 10_000_000, msgs)])
+      return int(parser.vl["ACC_19"]["ACC_Events"]), int(parser.vl["ACC_18"]["ACC_Anforderung_HMS"])
+
+    # engaging while held at a stop: no ready to start
+    for _ in range(10):
+      sent(enabled=False)
+    seq = [sent() for _ in range(400)]
+    self.assertNotIn(3, [event for event, _ in seq])
+
+    # openpilot brakes the car to a stop: ready to start for 2.5 s of the hold, then gone while it keeps holding
+    for _ in range(50):
+      sent(held=False)
+    seq = [sent() for _ in range(400)]
+    events = [event for event, _ in seq]
+    self.assertTrue(all(event == 3 for event in events[10:240]), events[:20])
+    self.assertTrue(all(event == 0 for event in events[260:]))
+    self.assertEqual({hms for _, hms in seq[10:240]}, {hms for _, hms in seq[260:]})
+
 
 class TestVolkswagenPlatformConfigs(unittest.TestCase):
   def test_flag_values_are_unique(self):
