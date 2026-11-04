@@ -8,6 +8,7 @@ class CANPacker:
   def __init__(self, dbc_name: str):
     self.dbc = DBC(dbc_name)
     self.counters: dict[int, int] = {}
+    self.special: dict[int, tuple[Signal | None, Signal | None]] = {}  # (counter, checksum) per address, found once
 
   def pack(self, address: int, values: dict[str, float]) -> bytearray:
     msg = self.dbc.addr_to_msg.get(address)
@@ -28,13 +29,18 @@ class CANPacker:
       if sig.type == SignalType.COUNTER or sig.name == "COUNTER":
         self.counters[address] = int(value)
         counter_set = True
-    sig_counter = next((s for s in msg.sigs.values() if s.type == SignalType.COUNTER or s.name == "COUNTER"), None)
+    special = self.special.get(address)
+    if special is None:
+      special = self.special[address] = (
+        next((s for s in msg.sigs.values() if s.type == SignalType.COUNTER or s.name == "COUNTER"), None),
+        next((s for s in msg.sigs.values() if s.type > SignalType.COUNTER), None),
+      )
+    sig_counter, sig_checksum = special
     if sig_counter and not counter_set:
       if address not in self.counters:
         self.counters[address] = 0
       set_value(dat, sig_counter, self.counters[address])
       self.counters[address] = (self.counters[address] + 1) % (1 << sig_counter.size)
-    sig_checksum = next((s for s in msg.sigs.values() if s.type > SignalType.COUNTER), None)
     if sig_checksum and sig_checksum.calc_checksum:
       checksum = sig_checksum.calc_checksum(address, sig_checksum, dat)
       set_value(dat, sig_checksum, checksum)
