@@ -273,7 +273,8 @@ class TestMebLongStateMachine(unittest.TestCase):
         accel, _, hold_type, braking_to_stop, leaving_standstill, held = state.update(CS, CC, -1.0)
 
         self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
-        self.assertEqual(accel, -1.0)  # still braking, not the inactive full stop accel
+        # still braking, not the inactive full stop accel (MQB Evo hands the stop over at the stock radar's request)
+        self.assertEqual(accel, state.STOP_HANDOVER_ACCEL if state.mqb_evo else -1.0)
         self.assertTrue(braking_to_stop)
         self.assertFalse(held)
         self.assertFalse(leaving_standstill)
@@ -293,6 +294,42 @@ class TestMebLongStateMachine(unittest.TestCase):
         self.assertEqual(accel, state.CCP.ACCEL_INACTIVE)
         self.assertFalse(braking_to_stop)
         self.assertTrue(held)
+
+  def test_mqb_evo_stop_handover_like_stock(self):
+    # stock radar: -0.10 with Anhalten and a 1.06 m distance, then Anhalten off and the inactive accel from 0.3 km/h,
+    # HALTEN all the way; MEB keeps the upstream values
+    for platform in self.PLATFORMS:
+      with self.subTest(platform=platform):
+        CP = SimpleNamespace(carFingerprint=platform, flags=platform.config.flags)
+        state = self.make_state_machine(platform)
+        packer = CANPacker(DBC[platform][Bus.pt])
+        CC = self.make_car_control(long_state=LongCtrlState.stopping)
+
+        def send(v, state=state, CC=CC, CP=CP, packer=packer):
+          CS = self.make_car_state(v_ego=v, standstill=False, esp_hold=False)
+          accel, status, hold_type, braking_to_stop, leaving, held = state.update(CS, CC, -0.55)
+          msg = mebcan.create_acc_accel_control(packer, 0, CP, 2, state.acc_enabled, 4.0, 4.0, 0.5, 0.5, accel, status, hold_type,
+                                                braking_to_stop, leaving, held, v * 3.6, False)[0][1]
+          return accel, hold_type, braking_to_stop, held, msg
+
+        accel, hold_type, braking_to_stop, held, msg = send(0.3)
+        self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+        self.assertTrue(braking_to_stop)
+        self.assertFalse(held)
+        self.assertEqual(accel, -0.10 if state.mqb_evo else -0.55)
+        self.assertEqual((msg[7] >> 1) & 1, 1)  # ACC_Anhalten
+
+        accel, hold_type, braking_to_stop, held, msg = send(0.05)
+        self.assertEqual(hold_type, mebcan.ACC_HMS_HOLD)
+        if state.mqb_evo:
+          self.assertFalse(braking_to_stop)
+          self.assertTrue(held)  # the message's full-stop fields
+          self.assertEqual(accel, state.CCP.ACCEL_INACTIVE)
+          self.assertEqual(msg[7] & 0x3, 0)  # neither Anfahren nor Anhalten
+          self.assertEqual(state.start_stop_info, 1)  # no auto stop before the ESP holds
+        else:
+          self.assertTrue(braking_to_stop)
+          self.assertEqual(accel, -0.55)
 
   def test_start_stop_info_requests_engine_restart(self):
     # 0 = auto stop allowed, 1 = auto stop prohibited, 2 = engine start mandatory

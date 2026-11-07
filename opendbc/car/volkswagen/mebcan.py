@@ -261,6 +261,13 @@ class MebLongStateMachine:
 
 class SunnypilotMebLongStateMachine(MebLongStateMachine):
   """Fork policy layered around the upstream MEB transition state machine."""
+  # MQB Evo stop handover, as the stock radar does it (Golf 8, 2026-08-24 stock stop): while ACC_Anhalten is set it
+  # asks for -0.10, with a 1.06 m stopping distance (see terminal_rollout), and at 0.3 km/h it drops Anhalten and
+  # sends the inactive accel, keeping only HALTEN until the ESP confirms the hold. openpilot asked for -0.55 with
+  # 0.5 m until the hold: TSK's brake torque request went to 0 anyway, the car crawled on idle creep for 3 s and the
+  # ESP clamped at 0.2 km/h with a pitch rebound (2026-11-06 18:55)
+  STOP_HANDOVER_ACCEL = -0.10
+  STOP_HANDOVER_RELEASE_SPEED = 0.3 * CV.KPH_TO_MS
 
   def __init__(self, CP, CCP):
     super().__init__(CP, CCP)
@@ -304,6 +311,16 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     )
     held = acc_hold_type == self.acc_hold_type_vals['HALTEN'] and CS.esp_hold_confirmation
 
+    # held_msg: the message's full-stop fields (zero jerks and control limits), which stock sends from the release on
+    held_msg = held
+    if self.mqb_evo and braking_to_stop:
+      if CS.out.vEgo < self.STOP_HANDOVER_RELEASE_SPEED:
+        braking_to_stop = False
+        held_msg = True
+        accel = self.CCP.ACCEL_INACTIVE
+      else:
+        accel = self.STOP_HANDOVER_ACCEL
+
     # ACC_18.ACC_StartStopp_Info: 2 = engine start mandatory, 1 = auto stop prohibited, 0 = auto stop
     # allowed. Upstream sends the bare acc_enabled bool, so it can never reach 2 and openpilot cannot
     # ask for a restart once the engine has auto stopped, leaving the car unable to pull away. held is
@@ -320,7 +337,7 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
     else:
       self.start_stop_info = 1
 
-    return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held
+    return accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill, held_msg
 
 
 def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk, lower_jerk, upper_control_limit, lower_control_limit,
@@ -338,7 +355,7 @@ def create_acc_accel_control(packer, bus, CP, acc_type, acc_enabled, upper_jerk,
   commands = []
 
   # ACC_Anhalteweg: when stopping: MEB: values <> 0 the car can execute a hard brake probably if target is too close, MQBEvo: value 0 results in hard brake
-  terminal_rollout = 0.5 if CP.flags & VolkswagenFlags.MQB_EVO else 0
+  terminal_rollout = 1.06 if CP.flags & VolkswagenFlags.MQB_EVO else 0  # MQB Evo: the stock radar's distance
 
   full_stop_no_start = held and not leaving_standstill
 
