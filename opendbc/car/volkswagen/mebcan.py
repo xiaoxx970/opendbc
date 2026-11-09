@@ -262,6 +262,16 @@ class MebLongStateMachine:
 class SunnypilotMebLongStateMachine(MebLongStateMachine):
   """Fork policy layered around the upstream MEB transition state machine."""
 
+  # MQB Evo pull-away with nothing to follow. The model's launch can ramp from ~0.05 m/s^2, and after the ESP drops its
+  # hold the wheels may stay still for over a second. The radar's own ACC, which stays engaged alongside openpilot and
+  # keeps asking to hold with no lead to go after, shut down 1.08 s after the release on 2026-11-09 (ACC_Status_ACC
+  # 3 -> 5, then 7 until ignition off), with its red cluster warning. With a lead in front the radar asks to pull away
+  # as well (ACC_Anfahren), so close-lead launches are left exactly as planned.
+  # 0.85 is infiniteCable2's b4b32c3e STARTING_ACCEL, "minimum acceleration needed for a reliable brake release".
+  LAUNCH_ACCEL_FLOOR = 0.85  # m/s^2
+  LAUNCH_ACCEL_MIN_LEAD_DISTANCE = 10.0  # m, closer leads keep the planned accel
+  LAUNCH_ACCEL_MAX_SPEED = 0.3  # m/s, the wheels are turning by then
+
   def __init__(self, CP, CCP):
     super().__init__(CP, CCP)
     self.CP = CP
@@ -286,7 +296,13 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
       return self.acc_hold_type_vals['HALTEN']
     return super()._get_hold_type(CS, CC)
 
-  def update(self, CS, CC, accel) -> tuple[float, int, int, bool, bool, bool]:
+  def _launch_accel_floor_active(self, CS, lead_distance, leaving_standstill) -> bool:
+    # lead_distance: 0 means no lead (see get_lead_distance), None means the caller has no lead information
+    no_close_lead = lead_distance is not None and (lead_distance == 0 or lead_distance >= self.LAUNCH_ACCEL_MIN_LEAD_DISTANCE)
+    return self.mqb_evo and no_close_lead and leaving_standstill and CS.out.vEgo < self.LAUNCH_ACCEL_MAX_SPEED and \
+           not CS.out.gasPressed and not CS.out.brakePressed
+
+  def update(self, CS, CC, accel, lead_distance=None) -> tuple[float, int, int, bool, bool, bool]:
     # Keep the upstream state machine unchanged except while stock AEB is active.
     self.acc_enabled = CC.enabled and not CS.out.stockAeb
     effective_cc = CC if not CS.out.stockAeb else SimpleNamespace(
@@ -303,6 +319,9 @@ class SunnypilotMebLongStateMachine(MebLongStateMachine):
       CS, effective_cc, accel,
     )
     held = acc_hold_type == self.acc_hold_type_vals['HALTEN'] and CS.esp_hold_confirmation
+
+    if self._launch_accel_floor_active(CS, lead_distance, leaving_standstill):
+      accel = max(accel, self.LAUNCH_ACCEL_FLOOR)
 
     # ACC_18.ACC_StartStopp_Info: 2 = engine start mandatory, 1 = auto stop prohibited, 0 = auto stop
     # allowed. Upstream sends the bare acc_enabled bool, so it can never reach 2 and openpilot cannot

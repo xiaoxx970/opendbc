@@ -270,7 +270,8 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         
       if self.flags.meb_or_mqb_evo:
         accel_request = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
-        accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held = self.meb_long_state.update(CS, long_cc, accel_request)
+        accel, acc_control, acc_hold_type, braking_to_stop, leaving_standstill, held = self.meb_long_state.update(CS, long_cc, accel_request,
+                                                                                                                  CC_IC.hudLeadDistance)
 
         critical_state = hud_control.visualAlert == VisualAlert.fcw
         if CC_IC.longComfortMode:

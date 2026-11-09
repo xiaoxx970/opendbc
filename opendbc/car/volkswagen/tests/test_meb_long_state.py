@@ -382,6 +382,52 @@ class TestMebLongStateMachine(unittest.TestCase):
         self.assertFalse(state.hold_for_engine_start)
         self.assertEqual(hold_type, mebcan.ACC_HMS_RAMP_RELEASE)
 
+  def launch_accel(self, platform=CAR.VOLKSWAGEN_GOLF_MK8, lead_distance=0.0, planned=0.05, long_state=LongCtrlState.pid, **cs_kwargs):
+    state = self.make_state_machine(platform)
+    cs_kwargs = {"v_ego": 0.0, "esp_hold": True, "esp_standstill": True, **cs_kwargs}
+    return state.update(self.make_car_state(**cs_kwargs), self.make_car_control(long_state=long_state), planned, lead_distance)
+
+  def test_launch_accel_floor_without_a_close_lead(self):
+    for lead_distance in (0.0, 10.0, 14.9):
+      with self.subTest(lead_distance=lead_distance):
+        accel, _, hold_type, _, leaving_standstill, _ = self.launch_accel(lead_distance=lead_distance)
+        self.assertTrue(leaving_standstill)
+        self.assertEqual(hold_type, 4)  # ANFAHREN
+        self.assertEqual(accel, 0.85)
+
+  def test_launch_accel_floor_held_until_the_wheels_turn(self):
+    state = self.make_state_machine(CAR.VOLKSWAGEN_GOLF_MK8)
+    CC = self.make_car_control()
+    self.assertEqual(state.update(self.make_car_state(v_ego=0.0, esp_hold=True, esp_standstill=True), CC, 0.05, 0.0)[0], 0.85)
+    # the ESP has released, the wheels have not turned yet
+    self.assertEqual(state.update(self.make_car_state(v_ego=0.0, esp_hold=False, esp_standstill=True), CC, 0.1, 0.0)[0], 0.85)
+    # the wheels turn: back to the plan
+    accel, _, _, _, leaving_standstill, _ = state.update(self.make_car_state(v_ego=0.05, esp_hold=False, esp_standstill=False), CC, 0.2, 0.0)
+    self.assertFalse(leaving_standstill)
+    self.assertEqual(accel, 0.2)
+
+  def test_launch_accel_floor_ends_above_max_speed(self):
+    accel = self.launch_accel(v_ego=0.3, standstill=True, esp_hold=False)[0]
+    self.assertEqual(accel, 0.05)
+
+  def test_launch_accel_floor_keeps_a_higher_plan(self):
+    self.assertEqual(self.launch_accel(planned=1.2)[0], 1.2)
+
+  def test_launch_accel_unchanged_with_a_close_lead(self):
+    for lead_distance in (0.5, 5.1, 9.99, None):
+      with self.subTest(lead_distance=lead_distance):
+        accel, _, _, _, leaving_standstill, _ = self.launch_accel(lead_distance=lead_distance)
+        self.assertTrue(leaving_standstill)
+        self.assertEqual(accel, 0.05)
+
+  def test_launch_accel_floor_not_while_stopping_or_on_pedals(self):
+    self.assertEqual(self.launch_accel(long_state=LongCtrlState.stopping, planned=-0.5, esp_hold=False)[0], -0.5)
+    self.assertEqual(self.launch_accel(gas_pressed=True)[0], 0.05)
+    self.assertEqual(self.launch_accel(brake_pressed=True, esp_hold=False)[0], 0.05)
+
+  def test_launch_accel_floor_is_mqb_evo_only(self):
+    self.assertEqual(self.launch_accel(platform=CAR.VOLKSWAGEN_ID3_MK1)[0], 0.05)
+
   def test_aeb_inactive_field_split_preserves_wire_value(self):
     for platform in self.PLATFORMS:
       with self.subTest(platform=platform):
